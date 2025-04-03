@@ -1,1 +1,7 @@
 # CodeToShare040325
+
+This repository contains two R markdown files to share upon request for coding examples.
+
+BBMNWR; written in 2024.  This is the completed full script to accompany and fully replicate all statistical analyses in my PhD research published in PLOS One.  This code is much more messy than any production code, with very few annotations or comments.  This is because, from the start, the script was meant to exactly reproduce the results of our study.  It was not meant to be customizable, but anyone moderately competent in R should be able to read and change parameters as desired.
+
+Attrition R Markdown; written in 2025.  This is the fully replicable and annotated code to fully perform the FEMA employee turnover study.  The code includes all data ingestion and processing on the local system, as well as the modeling and interpretation, and an appendix for model parameter testing/tuning. There are many comments throughout to understand and use all aspects of the code, with a block of parameters to customize the modeling.  This markdown file was much more of a full report, from which production-level code was derived for reproducibility and put onto the Databricks servers with internal references for files, and for functions to facilitate internal automation and export of model parameters and figures.  Unfortunately this production code was left on the databricks servers when I was terminated from FEMA, so only the much larger, base report is available for sharing.

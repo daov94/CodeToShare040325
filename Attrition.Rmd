@@ -1,0 +1,469 @@
+# Project purpose and intro
+
+Visualize, model, and understand data on Attrition in the agency (leaving the agency for whatever set of reasons)
+
+Attrition types include:
+
+Variables of primary interest:
+
+-   AttritType - Attrition type (blank = Currently Employed)
+-   Tenure - Number of Years (divided into the 26 pay periods) in position (not necessarily entire agency, a transfer within agnecy is still considered a new job with terminated employment)
+-   ID - empoylee ID
+-   Age - Age at time of bi-weekly pay period indicated
+-   BI_WEEKLY_END_DATE - date of the end of the biweekly pay period that the data was obtained
+-   FISCAL_YEAR - Fiscal years from October in one year, to October the next year
+-   JobCode - Series Code; numerical indicator for position
+-   JobTitle - Position title formally spelt out; inconsistent formatting across positions
+-   EMPLOYEE.TYPE - Type of employee (e.g. Type1Employee, Type2Employee, Temp, Local Hire [LHire], Permanent, SES)
+-   OrgLevel2 - Level 2 of organization in which employed,
+-   OrgLevel3 - Level 3 description of organization in which employed,
+
+Specific data processing employed that affect all analyses:
+
+1.  Datasets are subset based on certain characteristics:
+    -   Specific employee types (Type1Employee, Type3Employee, Type2Employee, Type4Employee, Perm FT, SES)
+    -   Specific attrition types:
+        -   Attrition of broad interest (Resignation, Retirement Voluntary, Termination, Termination Appt In, Termination Exp of Appt)
+        -   Voluntary attrition (Resignation, and Retirement Voluntary)
+        -   Leave (Resignation only)
+2.  Undersampling majority class for 1:1 balance depending on the subsetted dataset used
+
+Questions to answer:
+
+- "which level show the most voluntary attrition with increasing tenure, regardless of fiscal year or employee type?"
+
+- "which offices show the most attrition (just resignation versus class 0), with <2 years of agency tenure, regardless of fiscal year or employee type?"
+
+Really nice reading material:
+https://www.nature.com/articles/6601118
+https://www.nature.com/articles/6601119
+
+```{r data merging, include=FALSE}
+library(dplyr)
+Sep18 = read.csv(file = "C:/Datasets/2024PP18 Historical Separations - OPPA EAD.csv", header = TRUE)
+Snap18 = read.csv(file = "C:/Datasets/2024PP18 Historical Snapshot - OPPA EAD.csv", header = TRUE)
+
+Sep19 = read.csv(file = "C:/Datasets/PP19 Historical Separations - OPPA EAD.csv", header = TRUE)
+Snap19 = read.csv(file = "C:/Datasets/PP19 Historical Snapshot - OPPA EAD.csv", header = TRUE)
+
+Sep20 = read.csv(file = "C:/Datasets/PP20 Historical Separations - OPPA EAD.csv", header = TRUE)
+Snap20 = read.csv(file = "C:/Datasets/PP20 Historical Snapshot - OPPA EAD.csv", header = TRUE)
+
+SepUp = read.csv(file = "C:/Datasets/Updated Historical Separations - OPPA EAD.csv", header = TRUE)
+SnapUp = read.csv(file = "C:/Datasets/Updated Historical Snapshot - OPPA EAD.csv", header = TRUE)
+
+SepFiles = list(Sep18, Sep19, Sep20, SepUp) 
+SnapFiles = list(Snap18, Snap19, Snap20, SnapUp)
+
+SepAgg = Sep18[1,] %>% slice(-1)
+SnapAgg = Snap18[1,] %>% slice(-1)
+
+for (i in 1:length(SepFiles)){
+  SepAgg = rbind(SepAgg, data.frame(SepFiles[i]))
+  SnapAgg = rbind(SnapAgg, data.frame(SnapFiles[i]))}
+
+write.csv(SnapAgg, file = "C:/Datasets/Derived - Aggregated Snapshots.csv")
+write.csv(SepAgg, file = "C:/Datasets/Derived - Aggregated Separations.csv")
+
+rm(list=ls())
+```
+###  Data Load in and Prep
+```{r load in and data prep}
+library(dplyr)
+library(survival)
+library(ggplot2)
+library(car)
+library(nnet)
+library(reshape2)
+library(caret)
+library(Metrics)
+library(rcompanion)
+library(broom)
+library(purrr)
+library(tidyr)
+
+data1sep = read.csv(file = "C:/Datasets/Derived - Aggregated Separations.csv", header = TRUE)
+data1snap = read.csv(file = "C:/Datasets/Derived - Aggregated Snapshots.csv", header = TRUE)
+names(data1sep)[names(data1sep)== "Employee.Type"] <- "EMPLOYEE.TYPE"
+
+VariablesToKeep = c("Tenure", "ID", "Age", "BI_WEEKLY_END_DATE", "FISCAL_YEAR", "JobCode", "JobTitle",
+  "EMPLOYEE.TYPE", "OrgLevel2", "OrgLevel3", "OrgLevel4")
+
+data2sep = subset(data1sep, select = c("AttritType", VariablesToKeep) )
+data2snap = subset(data1snap, select = VariablesToKeep)
+
+################################################################################
+
+# Encoding dataset
+data2sep$FISCAL_YEAR = as.factor(data2sep$FISCAL_YEAR)
+data2sep$JobCode = as.factor(data2sep$JobCode)
+data2sep$BI_WEEKLY_END_DATE = as.Date(data2sep$BI_WEEKLY_END_DATE, format = "%m/%d/%y")
+data2sep <- data2sep %>% rename(ORG_L2 = OrgLevel2, ORG_L3 = OrgLevel3, ORG_L4 = OrgLevel4)
+data2snap$FISCAL_YEAR = as.factor(data2snap$FISCAL_YEAR)
+data2snap$JobCode = as.factor(data2snap$JobCode)
+data2snap$BI_WEEKLY_END_DATE = as.Date(data2snap$BI_WEEKLY_END_DATE, format = "%m/%d/%y")
+data2snap <- data2snap %>% rename(ORG_L2 = OrgLevel2, ORG_L3 = OrgLevel3, ORG_L4 = OrgLevel4)
+
+CountStep1Sep = nrow(data2sep)
+CountStep1Snap = nrow(data2snap)
+
+# Step 2: remove all na, and possible binning
+data2sep = na.omit(data2sep)
+data2snap = na.omit(data2snap)
+
+# data2sep = subset(data2sep, Tenure>0 & Tenure<22)   # hard restriction [0,22), drop any obs outside range
+# data2snap = subset(data2snap, Tenure>0 & Tenure<22) # hard restriction [0,22), drop any obs outside range
+# data2sep  = data2sep  %>% mutate(Tenure = ifelse(Tenure > 22, 22, Tenure))   # binned [0,22+) into [0,22]
+# data2snap = data2snap %>% mutate(Tenure = ifelse(Tenure > 22, 22, Tenure))   # binned [0,22+) into [0,22]
+
+CountStep2Sep = nrow(data2sep)
+CountStep2Snap = nrow(data2snap)
+
+# Step 3:  remove duplicates and people from snapshot who have attritioned, keep snapshot entry with highest Tenure for each ID
+data2snap =  data2snap %>% group_by(ID) %>%  filter(Tenure == max(Tenure)) %>%  ungroup()
+data2snap = data2snap %>% filter(!(ID %in% data2sep$ID))
+data2sep = data2sep %>% distinct()
+data2snap = data2snap %>% distinct()
+
+CountStep3Sep = nrow(data2sep)
+CountStep3Snap = nrow(data2snap)
+
+# combine snap and sep datasets for all employees over timeframe
+data2snap = data2snap %>% mutate(AttritType = "Currently Employed", .before = Tenure)
+data3survUAF = bind_rows(data2sep, data2snap)
+#data3survUAF = data3survUAF %>% arrange(ID)
+data3survUAF = data3survUAF %>% arrange(Tenure)
+data3survUAF$AttritType = as.factor(data3survUAF$AttritType)
+CountStep4 = nrow(data3survUAF)
+# write.csv(data3survUAF, file = "C:/Datasets/Derived - Aggregated Cleaned Snap and Sep.csv")
+
+# binning EMPLOYEE.TYPE
+table(data3survUAF$EMPLOYEE.TYPE)
+data3survUAF = data3survUAF %>% mutate(
+     EMPLOYEE.TYPE = case_when(
+       EMPLOYEE.TYPE %in% c("t1", "t2") ~ "Type1Employee",
+       EMPLOYEE.TYPE %in% c("t3", "t4") ~ "Type3Employee",
+       EMPLOYEE.TYPE %in% c("t5", "t6", "t7") ~ "Type2Employee",
+       TRUE ~ EMPLOYEE.TYPE))
+
+################################################################################
+# Subsetting, within specific employee types
+TypesOfInterest = c("Type1Employee", "Type3Employee", "Type2Employee", "Type4Employee", "Perm FT", "SES")
+data3survUAF = data3survUAF[data3survUAF$EMPLOYEE.TYPE %in% TypesOfInterest,]
+# table(data3survUAF$EMPLOYEE.TYPE)
+
+### balance datasets function
+
+ThanosSnap = function(DatasetToBalance, BalanceFactor){
+ set.seed(621)
+ output1 = rbind(subset(DatasetToBalance, AttritType!="Currently Employed"), subset(DatasetToBalance, AttritType=="Currently Employed")[sample(nrow(subset(DatasetToBalance, AttritType=="Currently Employed")), BalanceFactor*nrow(subset(DatasetToBalance, AttritType!="Currently Employed"))), ])
+ return(output1)}
+
+FunMakeDatasetSubset = function(InputDataset = data3survUAF, InputStrata = "None", MinObsPerStrata = 0, InputAttritionLevelsToKeep = "All", BinRetirements = "None", BinTerminations = "None", BalanceYesNo = "No", BalanceFactor = 1, Encode01YesNo = "No"){
+  if (InputStrata == "None") {out1 = InputDataset} else {
+  if (MinObsPerStrata == 0) {out1 = InputDataset} else {out1 = InputDataset %>% count(!!sym(InputStrata)) %>% filter(n >= MinObsPerStrata) %>% inner_join(InputDataset, by = InputStrata)}}
+  if (InputAttritionLevelsToKeep[1] == "All") {out1 <- out1} else {out1 <- subset(out1, AttritType %in% InputAttritionLevelsToKeep)}
+  if (BinRetirements[1] == "None") {out1 = out1} 
+  if (BinRetirements[1] == "All") {out1 = out1 %>% mutate(AttritType = case_when(AttritType %in%c("RETIREMENT DISABILITY", "RETIREMENT MANDATORY", "RETIREMENT VOLUNTARY") ~ "Retirements Binned", TRUE ~ AttritType))}
+  if (BinRetirements[1] != "None" & BinRetirements[1] != "All") {out1 = out1 %>% mutate(AttritType = case_when(AttritType %in% BinRetirements ~ "Retirements Binned", TRUE ~ AttritType))}
+  if (BinTerminations[1] == "None") {out1 = out1} 
+  if (BinTerminations[1] == "All") {out1 = out1 %>% mutate(AttritType = case_when(AttritType %in% c("TERMINATION", "TERMINATION APPT IN", "TERM DURING PROB/TRIAL PERIOD", "TERMINATION EXP OF APPT") ~ "Terminations Binned", TRUE ~ AttritType))}
+  if (BinTerminations[1] != "None" & BinTerminations[1] != "All") {out1 = out1 %>% mutate(AttritType = case_when(AttritType %in% BinTerminations ~ "Terminations Binned", TRUE ~ AttritType))}
+  if (BalanceYesNo == "No") {out1 <- out1} else {out1 <- ThanosSnap(out1, BalanceFactor)}
+  if (Encode01YesNo == "No") {out1 = out1} else {out1 = out1 %>% mutate(AttritType = as.factor(ifelse(AttritType == "Currently Employed", 0, 1)))}
+  return(out1)}
+```
+
+```{r Tracking observation counts}
+print("Step 1, initial import")
+cat("Separations observations: ", CountStep1Sep, "\n")
+cat("Snapshot observations: ", CountStep1Snap, "\n \n")
+
+print("Step 2, removal of any row with any NA, and, if selected, removal of Tenure outside [0,22)")
+cat("Separations observations: ", CountStep2Sep, "\n")
+cat("Snapshot observations: ", CountStep2Snap, "\n \n")
+
+print("Step 3, removal of all but the most recent biweekly pay period entry for any ID in Snap, removal of duplicate entries in Sep")
+cat("Separations: ", CountStep3Sep, "\n")
+cat("Snapshot observations: ", CountStep3Snap, "\n \n")
+```
+
+### Dataset descriptions for project
+There are some people in who attritioned multiple times, e.g. 101011132-152866 and 101115556-356688 who each attritioned twice. All of their attrition events are included, since their join and attrition events are for different jobs/positions.
+
+The complete dataset can be subsetted with any combination of these characteristics:
+Certain attrition levels of interest
+A minimum number of observations per some strata (organization group) of interest
+Binning of observations with none, some, or all retirement levels
+Binning of observations with none, some, or all termination levels
+Balanced datasets (by undersampling Currently Employed) to a chosen ratio
+Encoded 0/1 for future analyses
+################################################################################ 
+
+################################################################################ 
+
+# Input variables for modeling 
+```{r Input variables for following analyses}
+InputStrata = "ORG_L2"      # Insert strata variable on which to slice analyses (can differ from strata used in dataset subsetting)
+
+InputDataset = FunMakeDatasetSubset(
+    InputAttritionLevelsToKeep = c("Currently Employed", "RESIGNATION", "RETIREMENT VOLUNTARY", "TERMINATION", "TERMINATION APPT IN", "TERMINATION EXP OF APPT"),   # Attrition types to keep for analysis
+    MinObsPerStrata = 50,                # Min num of obs in each strata required to be included for analysis
+    InputStrata = "ORG_L2",             # Strata variable on which to consider min num of obs
+    BinRetirements = "All",            # Select "All", "None", or a custom vector of Retirement levels to bin
+    BinTerminations = "None",           # Select "All", "None", or a custom vector of Termination levels to bin
+    BalanceYesNo = "No",                # Select "Yes" or "No" if the dataset should be balanced (randomly undersample "Currently Employed")
+    BalanceFactor = 1,                  # When balancing, produces the X:1 ratio of "Currently Employed":Any attrition class
+    Encode01YesNo = "Yes")               # "Yes" or "No" to encode attrition 0/1:  0 = Currently Employed, 1 = any attrition
+
+InputContinuousVar = "Tenure"    # Insert continuous explanatory variable
+InputResponse = "AttritType"        # Insert response variable
+
+InputTimePoints = round(c(1/12, 2/12, 4/12, 6/12, 9/12, 1, 2, 5, 10, 15, 20),3) # Input time points of interest in years
+
+InputMLFormula = paste("AttritType ~ Age + (Tenure/EMPLOYEE.TYPE) + (Tenure/", InputStrata, ") + -1")
+# Model formula can be with or without "+ FISCAL_YEAR"; the addition of "+ -1" directs models to be fit without intercepts or baseline categorical levels.
+
+# Check selected dataset
+# table(data3survUAF$AttritType)
+# table(InputDataset$AttritType)
+# table(data3survUAF$ORG_L2)
+# table(InputDataset$ORG_L2)
+```
+
+# Model Interpretations and background
+
+Interpreting KM Curve at a point: at the start of any step (from the left side, reading right along time), the corresponding survival rate and time indicate the probability that the event will happen within that time period.
+
+-   Conversely, it also means the event will not happen later than that time period. This is counter-intuitive, so be careful.
+-   E.g. At 15 years of tenure, the survival probability is 62%; this means there is 38% probability of attrition by 15 years, but also 62% probability of staying after 15 years.
+
+Interpreting KM Curve with intervals: over some period of time, the survival probability will drop by some %.
+
+-   This drop indicates the % probability of attrition within that time frame, and conversely, the remaining probability indicates the % of staying beyond that time frame.
+-   E.g. for years 0-5 and 5-10 the survival probability drops from 100 to 82 and then to 47; this means that within first 5 years (0-5) there's 18% probability of attrition with a 82% probability of staying beyond 5 years, and within next 5 years (5-10) there's 35% probability of attrition (only within years 5-10) with a 47% probability of staying beyond 10 years.
+
+Interpreting risk: Risk is instantaneous event rate for an individual who survived up to time t; e.g. at 15 years of tenure, their instantaneous rate of attrition is shown at the corresponding hazard; this rate of attrition increases
+
+Interpreting log rank test: Used to test differences in survival time between groups overall, but doesn't give particular details about differences.
+
+Hazard: Probability of event Hazard rate: Probability of event given survival up to a point of time
+
+Interpreting Cox Proportional Hazards: Used to test differences in survival time between groups, while accounting for different groups or variables.
+
+-   The regression model's beta parameters are the log hazard ratios for each variable; exponentiate to get to hazard, and then divide by other variables to get hazard ratio of the relative effect of level A over level B on the event.
+-   E.g. Age (continuous) has an estimated beta parameter of 0.26, this is exp(0.26) = 1.29693x increase in hazard or risk of attrition per year of age, which is the same as 29.7% higher risk of attrition.
+-   E.g. employee type (categorical) has estimated beta parameters of 0.8 for Type1Employee and 0.3 for Perm, this indicates a exp(0.8/0.3) = exp(2.6667) = 14.39192x higher hazard or risk of attrition for Type1Employee relative to PERM aka 1339% higher risk (not 1439%); and otherwise just exp(0.8) = 2.2255x hazard or risk of attrition for Type1Employee at any point in time, aka 123% higher risk.
+-   BEWARE OF NO CONVERGENCE BUT HIGH RSQUARED OR CONCORDANCE
+
+Interpreting x as percentages, all relative to a baseline of 100%:
+
+-   0.8x 20% lower/less than baseline, 80% risk relative to baseline
+-   1.2x 20% higher/more than baseline; 120% risk relative to baseline
+-   1.9x 90% higher/more than baseline; 190% risk relative to baseline
+-   2.1x 110% higher/more than baseline; 210% risk relative to baseline
+-   14.3x 1330% higher/more than baseline; 1430% risk relative to baseline
+
+# Modeling!
+
+### Logistic Regression
+```{r logistic regression}
+if(all(unique(InputDataset[[InputResponse]]) %in% c(0, 1))){
+  model3logreg = glm(as.formula(paste(InputMLFormula)), data = InputDataset, family = binomial)
+  print(summary(model3logreg))
+  View(ModelReadout(model3logreg))}
+```
+
+### Multinomial Regression
+```{r multinomial modeling}
+set.seed(621)
+model4multiS = multinom(as.formula(InputMLFormula), data = InputDataset)
+summary(model4multiS)
+data.frame(t(summary(model4multiS)$coeff))
+```
+
+### Survival analysis, Kaplan-Meier, Cox Proportional Hazards
+```{r survival analyses}
+model1surv = Surv(time = as.numeric(InputDataset[[InputContinuousVar]]), event = as.numeric(InputDataset[[InputResponse]]))
+model1survFit = survfit(as.formula(paste("model1surv ~", InputStrata)), data = InputDataset)
+surv_data = data.frame(time = model1survFit$time, surv = model1survFit$surv, upper = model1survFit$upper,   lower = model1survFit$lower, strata = rep(names(model1survFit$strata), model1survFit$strata))
+cumulative_hazard_data <- data.frame(time = model1survFit$time, cumhaz = -log(model1survFit$surv), strata = rep(names(model1survFit$strata), model1survFit$strata))
+cox_model = coxph(as.formula(paste("model1surv ~", sub("AttritType ~", "", InputMLFormula))), data = InputDataset)
+
+plot1KMSurv = ggplot(surv_data, aes(x = time, y = surv, color = strata, fill = strata)) + geom_step(linewidth = 2) + labs(title = "Kaplan-Meier Survival Curves (Probability of staying)", x = "Agency Tenure (Years)", y = "Probability of Staying") + theme_minimal() + theme(legend.title = element_blank()) + scale_y_continuous(limits = c(0, 1), expand = c(0,0), breaks = seq(0, 1, by = 0.1)) + scale_x_continuous(limits = c(0, 22), expand = c(0,0), breaks = seq(0, 22, by = 2)) + annotate("text", x = 0.02, y = 0.1, label = "This shows the Y probability of staying (ranging 0-1), \n between initial hiring and up to a particular time X. \n 'What is the probability of staying X years from their start date?'", size = 5, hjust = 0)
+plot2CHaz = ggplot(cumulative_hazard_data, aes(x = time, y = cumhaz, color = strata, fill = strata)) +  geom_step(linewidth = 2) + labs(title = "Cumulative Hazard (Risk of Attrition)", x = "Agency Tenure (Years)", y = "Risk of Attrition") +  theme_minimal() +  theme(legend.title = element_blank()) + scale_y_continuous(limits = c(0, 1), expand = c(0,0), breaks = seq(0, 1, by = 0.1))  + scale_x_continuous(limits = c(0, 22), expand = c(0,0), breaks = seq(0, 22, by = 2)) + annotate("text", x = 0.02, y = 0.85, label = "This shows the probability of attrition \n at a particular time X, or over a time range X+Z - X, \n given they've been with the agency for X years. \n 'What is the probability of attrition in Z more years, after having stayed X years?'", size = 5, hjust = 0)
+
+# View results of survival and cumulative hazard
+plot1KMSurv
+plot2CHaz
+cat("########################### \n ########################### \n \n Cox Proportional Hazards model for: \n", "[", InputMLFormula, "] \n \n \n")
+cat("Baseline levels are: \n [", levels(as.factor(InputDataset[["EMPLOYEE.TYPE"]]))[1], "] and [", levels(as.factor(InputDataset[["ORG_L2"]]))[1], "] \n \n \n ########################### \n ########################### \n")
+
+model1survFit
+summary(cox_model)
+
+# Estimate and interpolate survival probabilities at particular time points
+interpolate_survival <- function(data, InputTimePoints) {approx(x = data$time, y = data$surv, xout = InputTimePoints, rule = 2)}
+interpolated_surv_data <- surv_data %>% group_by(strata) %>% summarise(interpolated = list(interpolate_survival(pick(time, surv), InputTimePoints)), .groups = "drop" ) %>% mutate(interpolated = map(interpolated, ~ tibble(time = .x$x, surv = .x$y))) %>% unnest(cols = c(interpolated))
+
+ggplot(interpolated_surv_data, aes(x = time, y = surv, color = strata)) + geom_line(size = 1) + geom_point(size = 2) + labs(title = "Probability of staying X Years once started", x = "Years since started", y = "Probability of staying", color = "Strata") + theme_minimal() + theme(legend.position = "right",plot.title = element_text(hjust = 0.5, size = 16),axis.title = element_text(size = 14), axis.text = element_text(size = 12)) + scale_y_continuous(limits = c(0.5, 1), expand = c(0,0), breaks = seq(0, 1, by = 0.1))  + scale_x_continuous(limits = c(0, 10), expand = c(0,0), breaks = seq(0, 10, by = 1))
+
+# Generate table of survival probabilities
+surv_data_avg <- surv_data %>% group_by(strata) %>% summarise(interpolated = list(interpolate_survival(pick(time, surv), InputTimePoints)), .groups = "drop") %>% mutate(interpolated = map(interpolated, ~ tibble(time = .x$x, surv = .x$y))) %>% unnest(cols = c(interpolated)) %>% pivot_wider(names_from = time, values_from = surv, names_prefix = "time_", values_fill = list(surv = NA))
+avg_row <- surv_data_avg %>% select(-strata) %>% summarise(across(starts_with("time_"), mean, na.rm = TRUE)) %>% mutate(strata = "Average Probability of all Stratas at Time point")
+colssurv = surv_data_avg[,-1]
+dfsurvtimes = colssurv[,1] - as.vector(avg_row[1])
+dfsurvtimes = cbind(surv_data_avg[,1], dfsurvtimes)
+for (i in 2:ncol(colssurv)){
+newcol = colssurv[,i] - as.vector(avg_row[i])
+dfsurvtimes = cbind(dfsurvtimes, newcol)}
+surv_data_avg = rbind(avg_row, surv_data_avg) %>% select(strata, everything())
+diffavg_outs = rbind(avg_row, dfsurvtimes) %>%  rename_with(~ paste0("diff_", .), -strata) %>% select(-strata)
+SurvProbabilities <- surv_data_avg %>% mutate(across(-strata, ~ if_else( strata == "Average Probability of all Stratas at Time point", sprintf("%.3f (0.000)", .), sprintf("%.3f (%.3f)", ., diffavg_outs[[paste0("diff_", cur_column())]]))))
+SurvProbabilities
+#View(SurvProbabilities)
+```
+
+# Appendix
+### Assess linear model fits with Different dataset balancing
+```{r testing model fit}
+dataUS10 = subset(data3survUAF, AttritType %in% c("Currently Employed", "RESIGNATION", "RETIREMENT VOLUNTARY", "TERMINATION", "TERMINATION APPT IN", "TERMINATION EXP OF APPT"))  %>%   mutate(AttritType = as.factor(ifelse(AttritType != "Currently Employed", "1", AttritType)))
+dataUV10 = subset(data3survUAF, AttritType %in% c("Currently Employed", "RESIGNATION", "RETIREMENT VOLUNTARY")) %>% mutate(AttritType = as.factor(ifelse(AttritType != 0, 1, AttritType)))
+dataB1V10 = ThanosSnap(subset(data3survUAF, AttritType %in% c("Currently Employed", "RESIGNATION", "RETIREMENT VOLUNTARY")) %>% mutate(AttritType = as.factor(ifelse(AttritType != 0, 1, AttritType))),1)
+dataB2V10 = ThanosSnap(subset(data3survUAF, AttritType %in% c("Currently Employed", "RESIGNATION", "RETIREMENT VOLUNTARY")) %>% mutate(AttritType = as.factor(ifelse(AttritType != 0, 1, AttritType))),2)
+dataB3V10 = ThanosSnap(subset(data3survUAF, AttritType %in% c("Currently Employed", "RESIGNATION", "RETIREMENT VOLUNTARY")) %>% mutate(AttritType = as.factor(ifelse(AttritType != 0, 1, AttritType))),3)
+dataB4V10 = ThanosSnap(subset(data3survUAF, AttritType %in% c("Currently Employed", "RESIGNATION", "RETIREMENT VOLUNTARY")) %>% mutate(AttritType = as.factor(ifelse(AttritType != 0, 1, AttritType))),4)
+dataB5V10 = ThanosSnap(subset(data3survUAF, AttritType %in% c("Currently Employed", "RESIGNATION", "RETIREMENT VOLUNTARY")) %>% mutate(AttritType = as.factor(ifelse(AttritType != 0, 1, AttritType))),5)
+
+
+f1_score <- function(actual, predicted) {
+  actual <- factor(actual, levels = c(0, 1))
+  predicted <- factor(predicted, levels = c(0, 1))
+  
+  cm <- table(predicted, actual)
+  
+  precision <- cm[2, 2] / sum(cm[2, ])  # TP / (TP + FP)
+  recall <- cm[2, 2] / sum(cm[, 2])     # TP / (TP + FN)
+  
+  f1 <- 2 * ((precision * recall) / (precision + recall))
+  return(f1)}
+
+InputDataset = dataB1V10            # insert dataset
+InputContinuousVar = "Tenure"    # insert continuous explanatory variable
+InputResponse = "AttritType"        # insert response variable
+InputStrata = "ORG_L2"     # insert strata variable on which to slice various analyses
+InputMLFormula = "AttritType ~  Age + EMPLOYEE.TYPE + Tenure*ORG_L2  + -1"   # with or without     "+ FISCAL_YEAR"
+
+
+set.seed(621)
+trainIndex <- createDataPartition(InputDataset[[InputResponse]], p = 0.85, list = FALSE)
+trainData <- InputDataset[trainIndex, ]
+testData <- InputDataset[-trainIndex, ]
+
+
+model3logreg <- glm(InputMLFormula, data = trainData, family = binomial)
+predicted_probs <- predict(model3logreg, newdata = testData, type = "response")
+predicted_classes <- ifelse(predicted_probs > 0.5, 1, 0)
+actual_classes <- testData$AttritType
+
+data.frame(actual_classes, predicted_classes)
+table(predicted_classes)
+table(actual_classes)
+
+confusionMatrix(reference=actual_classes, data=as.factor(predicted_classes))
+summary(model3logreg)
+
+cat("\n R Squared: ", 1-summary(model3logreg)$deviance/summary(model3logreg)$null.deviance, "\n \n")
+cat("F1 score: ", f1_score(actual_classes, predicted_classes))
+nagelkerke(model3logreg)[[2]]
+```
+
+Remarks about testing:
+Binning unimportant, doesn't improve modeling substantially to justify the loss of data.
+Balancing the data has huge effects.
+1:1 ratio provides the best nagelkerke pseudo R^2 score (0.070); a 5:1 split was okay (0.057) but still better than nonbalanced (0.046).
+1:1 ratio also provides extremely acceptable F1 score (0.591) compared to all others (<0.173 and otherwise <0.0024).
+1:1 ratio provided the lowest reduction in deviance, but also the lowest deviance to start with (no surprise cuz much less data going in).
+
+Overall there's poor model fit but the balancing alleviates problems a lot.  Should proceed with 1:1 balancing for interpretation too.
+
+###  Assess Distributions of Agency Tenure
+```{r Assessing distribution of Agency Tenure}
+InputDataset = FunMakeDatasetSubset(
+    InputAttritionLevelsToKeep = c("Currently Employed", "RESIGNATION", "RETIREMENT VOLUNTARY", "TERMINATION", "TERMINATION APPT IN", "TERMINATION EXP OF APPT"),   # Attrition types to keep for analysis
+    MinObsPerStrata = 50,                # Min num of obs in each strata required to be included for analysis
+    InputStrata = "ORG_L2",             # Strata variable on which to consider min num of obs
+    BinRetirements = "All",            # Select "All", "None", or a custom vector of Retirement levels to bin
+    BinTerminations = "None",           # Select "All", "None", or a custom vector of Termination levels to bin
+    BalanceYesNo = "No",                # Select "Yes" or "No" if the dataset should be balanced (randomly undersample "Currently Employed")
+    BalanceFactor = 1,                  # When balancing, produces the X:1 ratio of "Currently Employed":Any attrition class
+    Encode01YesNo = "No")               # "Yes" or "No" to encode attrition 0/1:  0 = Currently Employed, 1 = any attrition
+
+reference_date <- as.Date("2024-10-01")
+#subset(data3survUAF, AttritType %in% c("Currently Employed", "RESIGNATION", "RETIREMENT VOLUNTARY", "RETIREMENT DISABILITY", "TERMINATION"))
+
+View(data3survUAF)
+data3survBinned = InputDataset %>% mutate(NOA_Code_Group = case_when(AttritType %in% c("Currently Employed", "RESIGNATION") ~ AttritType, AttritType %in% c("TERMINATION", "TERMINATION APPT IN", "TERMINATION EXP OF APPT") ~ "TERMINATIONS", AttritType %in% c("RETIREMENT DISABILITY", "RETIREMENT VOLUNTARY") ~ "RETIREMENTS", TRUE ~ NA_character_)) %>% filter(!is.na(NOA_Code_Group))
+
+table(as.factor(data3survBinned$AttritType))
+
+SpecialDates <- data3survUSF %>% filter(Tenure>0) %>%  mutate(Tenure.Date = reference_date - as.difftime(Tenure * 365.25, units = "days"))
+
+ggplot(subset(SpecialDates, AttritType != "Currently Employed"), aes(x = Tenure, fill = AttritType)) + geom_histogram(position = "identity", alpha = 0.5, binwidth = 1/12, boundary = 0) + labs(title = "Agency Tenure and Attrition Types by Month", x = "Agency Tenure (Year)", y = "Number of Employees", fill = "Attrition Type") + scale_x_continuous(breaks = seq(0, max(SpecialDates$Tenure, na.rm = TRUE), by = 1/3), labels = scales::number_format(scale = 1), guide = guide_axis(n.dodge = 2)) + theme_minimal()
+
+SpecialDates %>% subset(AttritType != "Currently Employed") %>% mutate(rounded_tenure = round(Tenure * 6) / 6) %>% group_by(rounded_tenure, AttritType) %>% summarise(count = n(), .groups = 'drop') %>% group_by(rounded_tenure) %>% mutate(proportion = count / sum(count)) %>% ggplot(aes(x = rounded_tenure, y = proportion, fill = AttritType)) + geom_bar(stat = "identity", position = "stack", alpha = 0.7, width = 0.12) + scale_x_continuous(breaks = seq(0, max(SpecialDates$Tenure, na.rm = TRUE), by = 1),  labels = scales::number_format(scale = 1), expand = expansion(mult = c(0, 0))) + theme_minimal() + theme(axis.text.x = element_text(angle = 0, hjust = 0.5, vjust = 0.5)) + labs(title = "Agency Tenure and Proportion of Attrition Types, binned for every 2 months", x = "Agency Tenure (Year)", y = "Proportion of Employees", fill = "Attrition Type")
+
+
+```
+### Identify the Highest Agency Tenures, > 20 years
+```{r Strange peaks in counts of Agency Tenure}
+out1 = subset(data3survUAF, Tenure>18)
+#out1 = subset(data3survUAF, Tenure>20 & AttritType == "Currently Employed")  # Subset for CURRENTLY EMPLOYED
+#out1 = subset(data3survUAF, Tenure>20 & AttritType != "Currently Employed")  # Subset for Any form of Attrition
+#out1 = subset(data3survUAF, Tenure %in% c("20.81040383", "20.88706366", "21.42368241", "21.53867214", "21.61533196") & AttritType == "Currently Employed")
+#out1 = subset(data3survUAF, Tenure %in% c("20.88706366"))
+out1$Tenure = as.factor(out1$Tenure)
+data.frame(table(out1$Tenure))
+
+out1 %>% group_by(ORG_L2, ORG_L3, ORG_L4) %>% summarize(Freq = n()) %>% arrange(desc(Freq))
+```
+Many of these agency tenures are 20.8-21.6 years, as of Oct 2024. 
+These tenures line up with a start date ranging between November 2002 and December 2003, around which dates there was major legislation creating the agency
+It is clear that many employees, who were here during its creation, are still in the agency today.
+
+```{r Identify the <2 month agency tenures}
+out1 = subset(data3survUAF, Tenure<1) # Less than 1 year
+out1 = subset(data3survUAF, Tenure<0.3) # Less than 2 months
+data.frame(table(out1$ORG_L4)) %>% arrange(desc(Freq))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

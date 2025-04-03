@@ -1,0 +1,1126 @@
+---
+title: "BBMNWR Statistical Analyses"
+author: "viet dao"
+date: "2024-03-04"
+output: 
+  html_document: 
+    fig_width: 16
+    fig_height: 12
+    fig_caption: yes
+---
+
+Pro tip: ALT + O (the vowel, between the I and P keys; not the zero key) to collapse all chunks.
+
+# All figure names
+```{r figure names}
+n.NMDSPlants = "Fig 1 - Plant NMDS.tiff"
+# Fig 2 - Bar Plot of Plant Mean Coverage.tiff
+f.massbar = "Fig 3 - Mass Gain Bar Plot.tiff"
+# Fig 4 - Fungal and Bacterial Phyla.tiff
+n.frt = "Fig 5 - FRT NMDS, Regime and Regime by Time.tiff"
+n.brt = "Fig 6 - BRT NMDS, Regime and Regime by Time.tiff"
+f.adivF = "Fig 7 - Fungal Alpha Diversity Metrics.tiff"
+f.adivB = "Fig 8 - Bacterial Alpha Diversity Metrics.tiff"
+f.ffun = "Fig 9 - Fungal Functions.tiff"
+f.bfun = "Fig 10 - Bacterial Functions.tiff"
+
+# S1 Fig - Experiment and Plot Design.tiff
+# S2 Table - Plant PERMANOVA Table
+# S3  - Results of all Significant Contrasts
+# S4 Table - Mass Gain summary 
+# S5 Table - Mass Gain ANOVA Table
+# S6 Fig - Detailed bar plot of mass gain
+
+n.frt3 = "S7 Fig - FRT3 NMDS, Regime by Time Separated.tiff"
+n.flt = "S8 Fig - FLT2 NMDS, Load and Load by Time.tiff"
+n.flt2 = "S9 Fig - FLT2 NMDS, Load by Time Separated.tiff"
+n.frl = "S10 Fig - FRL1 NMDS, Regime-Load.tiff"
+n.frl2 = "S11 Fig - FRL3 NMDS, Regime-Load Separated.tiff"
+n.frlt = "S12 Fig - FRLT9 NMDS, Regime-Load by Time Separated.tiff"
+
+n.brt2 = "S13 Fig - BRT3 NMDS, Regime by Time Separated.tiff"
+n.blt = "S14 Fig - BLT2 NMDS, Load and Load by Time.tiff"
+n.blt2 = "S15 Fig - BLT2 NMDS, Load by Time Separated.tiff"
+n.brl = "S16 Fig - BRL1 NMDS, Regime-Load.tiff"
+n.brl2 = "S17 Fig - BRL3 NMDS, Regime-Load Separated.tiff"
+n.brlt = "S18 Fig - BRLT9 NMDS, Regime-Load by Time Separated.tiff"
+
+
+# S19  - Fungal and Bacterial PERMANOVA Tables
+# S20 Table - Alpha Diversity ANOVA Tables
+f.adivboxrt = "S21 Fig - Alpha Div Boxplots, Regime-Time.tiff"
+f.adivboxrlt = "S22 Fig - Alpha Div Boxplots, Regime-Load-Time.tiff"
+# S23  - Indicator Fungi and Bacteria
+# S24 Table - Summary of Results
+```
+
+# PLANT AND DECOMPOSITION ANALYSIS --------------------------------------------
+
+## Plant analysis
+```{r plant analysis, include=FALSE}
+library(vegan)
+library(ggplot2)
+library(ggConvexHull)
+dataplants = read.csv(file = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/final plant data.csv")
+dataplants = dataplants[-c(6,41),-8] #outlier plots are 6 and 41; col 8 is other species
+dataplants$Regime.Load = as.factor(dataplants$Regime.Load)
+dataplants$Regime = as.factor(dataplants$Regime)
+dataplants$Load = as.factor(dataplants$Load)
+
+# NMDS
+set.seed(621)
+nmds1 = metaMDS(dataplants[,4:7], distance = "chord", autotransform = TRUE, k = 2, try = 100, trymax = 100) #stress = 0.03292275, iteration 74
+
+scores1 = as.data.frame(vegan::scores(nmds1)$sites)
+scores1full = cbind(dataplants[,1:3], scores1)
+
+nmdsplotplants2 <- ggplot(scores1full, aes(x = NMDS1, y = NMDS2)) + 
+  geom_point(size = 5, position = position_jitter(width = 0.05, height = 0.05), 
+             aes(color = Regime, shape = Regime, fill = Regime, alpha = Load), stroke = 0.5) +
+  geom_convexhull(alpha = 0.1, aes(color = Regime,fill = Regime, ), show.legend = FALSE) +
+  scale_shape_manual(values = c(21, 24, 22)) +
+  scale_color_manual(values = c("#F8766D", "#00BA38", "#619CFF")) +
+  scale_fill_manual(values = c("#F8766D", "#00BA38", "#619CFF")) + 
+  scale_alpha_manual(values = c(0.3, 1)) +
+  labs(tag = "") + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        panel.border = element_rect(colour = "black", fill=NA, size=1),
+        legend.box.background=element_rect(),
+        legend.box.margin=margin(1,1,1,1))+
+  guides(fill = guide_legend(override.aes = list(alpha = 1)), color = guide_legend(override.aes = list(alpha = 1)), shape =
+           guide_legend(override.aes = list(alpha = 1)))
+nmdsplotplants2
+
+outputpath1 = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/Statistical outputs and figures/All figures dumped/"
+ggsave(n.NMDSPlants, plot= nmdsplotplants2, path = outputpath1, device = "tiff", width = 7, height = 6)
+
+# PERMANOVA and contrasts
+set.seed(621)
+anova(betadisper(vegdist(dataplants[,4:8], method = "chord"), group = dataplants$Regime.Load)) # p = 0.5142 for homogeneous dispersion
+out1 = adonis2(formula = dataplants[4:9]~Regime*Load, data = dataplants, permutations = 10000, method = "chord", by = "terms", parallel = 8)
+out1 #Regime main effect:  p=0.001,   Load main effect p = 0.604,  Regime*Load interaction p=0.587
+# Var explained:   Regime 44.571%, Load 0.928%, Regime*Load 2.266%
+
+regimeA = model.matrix( ~ C(dataplants$Regime, c(2, -1, -1)))[,2] # contrast regimeA, 1 vs 4+5
+regimeB = model.matrix( ~ C(dataplants$Regime, c(0, 1, -1)))[,2]  # contrast regimeB, 4 vs 5
+
+set.seed(621)
+out2 = adonis2(formula = dataplants[4:9] ~ regimeA + Load, data = dataplants, permutations = 10000, method = "chord", by = "margin", parallel = 8)
+out3 = adonis2(formula = dataplants[4:9] ~ regimeB + Load, data = dataplants, permutations = 10000, method = "chord", by = "margin", parallel = 8)
+
+out1
+out2 # contrast 1, regimeA, p=0.001
+out3 # contrast 2, regimeB, p=0.218
+```
+
+## Mass Change analysis
+```{r Mass Change analysis, include=FALSE}
+library(dplyr)
+library(ggplot2)
+library(multcompView)
+library(lmerTest)
+library(psycho)
+MassGainData = read.csv(file = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/final decomp data.csv")
+MassGainData$Regime = as.factor(MassGainData$Regime)
+MassGainData$Load = as.factor(MassGainData$Load)
+MassGainData$Time = as.factor(MassGainData$Time)
+MassGainData$PlotNum = as.factor(MassGainData$PlotNum)
+MassGainData$PlotID = as.factor(MassGainData$PlotID)
+MassGainData$RLT = as.factor(MassGainData$RLT)
+
+# Linear mixed model 
+yresp = log(MassGainData$MassGained)
+lm1 = lm(data = MassGainData, formula = yresp ~ Regime*Load*Time)
+shapiro.test(lm1$residuals) # normally distributed residuals
+olsrr::ols_test_breusch_pagan(lm1) # homogeneity of residual variances
+#                no TF       | log TF   | sqrt TF
+# Shapiro:       2.035e-09    6.862e-05   3.369e-07
+# Breusch Pagan: 0.05894534   0.1361638   0.707466 
+anova(lmer(log(MassGained) ~ Regime*Load*Time + (1|PlotID), data=MassGainData))
+# Regime and Load significant, p<0.001 for both.
+
+# Contrasts
+regimeA = model.matrix( ~ C(MassGainData$Regime, c(2, -1, -1)))
+regimeB = model.matrix( ~ C(MassGainData$Regime, c(0, 1, -1)))
+
+out2 = lmer(log(MassGained) ~ regimeA[,2]*Load*Time + (1|PlotID), data=MassGainData)
+out3 = lmer(log(MassGained) ~ regimeB[,2]*Load*Time + (1|PlotID), data=MassGainData)
+anova(out2) # Contrast 1, regimeA, p<0.001
+anova(out3) # Contrast 2, regimeB, p=0.25163
+
+# p regime = 8.09e-13; p load = 3.88e-17, p time = 0.125, p regime*load = 9.00e-03; p other interactions >0.264     with outlier included
+TukeyHSD(aov((MassGained) ~ Regime*Load*Time, data = MassGainData))
+qt(0.975, df = (96 - 1)) * sd(MassGainData$MassGained) / sqrt(96) #Margin of Error for 95% CI, 0.1279983
+# 0.7548048g +/- 0.1279983g average difference in mass gained for L1 to L2
+# R1 to R4 mass gain increase 0.49g,  R1 had consistently lower mass gain
+# R1 to R5 mass gain increase 0.83g,  R5 had highest mass gain of all treatments
+# R4 to R5 mass gain increase 0.34g
+
+#rm(list=ls())
+```
+
+```{r mass gain plotting, detaileddddddd}
+library(ggplot2)
+library(dplyr)
+positionsFLT = c("R1L1D060", "R1L1D120", "R1L1D150",
+                 "R1L2D060", "R1L2D120", "R1L2D150",
+                 "R4L1D060", "R4L1D120", "R4L1D150",
+                 "R4L2D060", "R4L2D120", "R4L2D150",
+                 "R5L1D060", "R5L1D120", "R5L1D150",
+                 "R5L2D060", "R5L2D120", "R5L2D150")
+colorvalsFLT = c("R1L1D060" = "deepskyblue1", "R1L1D120"= "deepskyblue1", "R1L1D150"= "deepskyblue1",
+                 "R1L2D060" = "deepskyblue4", "R1L2D120" = "deepskyblue4", "R1L2D150" = "deepskyblue4",
+                 "R4L1D060" = "firebrick1", "R4L1D120" = "firebrick1", "R4L1D150" = "firebrick1",
+                 "R4L2D060" = "firebrick4", "R4L2D120" = "firebrick4", "R4L2D150" = "firebrick4",
+                 "R5L1D060" = "springgreen1", "R5L1D120" = "springgreen1", "R5L1D150" = "springgreen1",
+                 "R5L2D060" = "springgreen4", "R5L2D120" = "springgreen4", "R5L2D150" = "springgreen4")
+
+  dt1 = group_by(MassGainData, RLT) %>%  summarise(meani = mean(MassGained), CI95 = (qt(0.025, df = (n() - 1)) * sd(MassGained) / sqrt(n()))) %>%  arrange(desc(meani))
+  dt1$Regime=c("R1", "R1", "R1", "R1", "R4", "R4", "R4", "R5", "R5", "R1", "R5", "R1", "R4", "R4", "R4", "R5", "R5", "R5")
+  dt1$Load=c("L1", "L1", "L1", "L2", "L1", "L1", "L1", "L1", "L1", "L2", "L1", "L2", "L2", "L2", "L2", "L2", "L2", "L2")
+  dt1$Time=c("D150", "D120", "D060", "D060", "D060", "D120", "D150", "D060", "D120", "D120", "D150", "D150", "D120", "D060", "D150", "D120", "D060", "D150")
+
+
+plot1 =  ggplot(dt1) +  geom_bar(mapping=aes(x=Time, fill = Time, y=meani), stat = "identity", show.legend = FALSE) + geom_errorbar(aes(ymin = meani-CI95, ymax=meani+CI95, x = Time), width = 0.2) + facet_wrap(Regime ~ Load, ncol=2) +  labs(y = "Mass Gained (grams)") + coord_cartesian(ylim=c(0,4.25))
+
+ggsave(plot = plot1, path = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/Statistical outputs and figures/All figures dumped/", filename = f.massbardetail, device=tiff(), width = 5, height = 10)
+```
+
+```{r Mass Change by 95% CI overall}
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+
+sum1 = data.frame(
+MassGainData[MassGainData$MassGained<5,] %>%
+  group_by(Regime) %>%
+  summarize(
+    AverageMassGained = mean(MassGained),
+    SE = sd(MassGained) / sqrt(n()),
+    CI95 = qt(0.975, df = n() - 1) * SE))
+
+sum2 = data.frame(
+MassGainData[MassGainData$MassGained<5,] %>%
+  group_by(Load) %>%
+  summarize(
+    AverageMassGained = mean(MassGained),
+    SE = sd(MassGained) / sqrt(n()),
+    CI95 = qt(0.975, df = n() - 1) * SE))
+
+sum3 = data.frame(
+MassGainData[MassGainData$MassGained<5,] %>%
+  group_by(Regime, Load) %>%
+  summarize(
+    AverageMassGained = mean(MassGained),
+    SE = sd(MassGained) / sqrt(n()),
+    CI95 = qt(0.975, df = n() - 1) * SE))
+
+sum3 = sum3 %>%  mutate(Regime_Load = paste(Regime, Load, sep = "")) %>% select(-Regime, -Load)
+
+
+plotR = ggplot(data=sum1) + geom_col(mapping=aes(x=Regime, y=AverageMassGained)) + geom_errorbar(aes(ymin = AverageMassGained-CI95, ymax=AverageMassGained+CI95, x = Regime), position = position_dodge(width = 0.9)) +  coord_cartesian(ylim=c(0,4))+  ylab("Average Percent Change") +  scale_y_continuous(breaks = seq(0, 4, by = 0.5))  + geom_text(data = sum1, aes(x = Regime, y = AverageMassGained + CI95, label = c("A", "B", "B")), vjust = -0.5, position = position_dodge(width = 0.9), size = 4) + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        panel.border = element_rect(colour = "black", fill=NA, linewidth=1),
+        legend.box.background=element_rect(),
+        legend.box.margin=margin(1,1,1,1),
+        text = element_text(size = 15))
+
+plotL = ggplot(data=sum2) + geom_col(mapping=aes(x=Load, y=AverageMassGained)) + geom_errorbar(aes(ymin = AverageMassGained-CI95, ymax=AverageMassGained+CI95, x = Load), position = position_dodge(width = 0.9)) +  coord_cartesian(ylim=c(0,4))+  ylab("") +  scale_y_continuous(breaks = seq(0, 4, by = 0.5))  + geom_text(data = sum2, aes(x = Load, y = AverageMassGained + CI95, label = c("A", "B")), vjust = -0.5, position = position_dodge(width = 0.9), size = 4) + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        panel.border = element_rect(colour = "black", fill=NA, linewidth=1),
+        legend.box.background=element_rect(),
+        legend.box.margin=margin(1,1,1,1),
+        text = element_text(size = 15))
+
+#plotRL = ggplot(data=sum3) + geom_col(mapping=aes(x=Regime_Load, y=AverageMassGained)) + geom_errorbar(aes(ymin = AverageMassGained-CI95, ymax=AverageMassGained+CI95, x = Regime_Load), position = position_dodge(width = 0.9)) +  coord_cartesian(ylim=c(0,4))+  ylab("") +  scale_y_continuous(breaks = seq(0, 4, by = 0.5))  + geom_text(data = sum3, aes(x = Regime_Load, y = AverageMassGained + CI95, label = c("A", "B", "B", "C", "B", "C")), vjust = -0.5, position = position_dodge(width = 0.9), size = 4)
+
+plotR
+plotL
+#plotRL
+
+plot4 = grid.arrange(plotR, plotL, plotRL, ncol=2, widths = c(1.2, .9))
+ggsave(filename = f.massbar, path = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/Statistical outputs and figures/All figures dumped/", plot = plot4, width = 12, height = 6)
+```
+
+```{r clean up}
+rm(list=ls())
+```
+
+
+
+# NMDS AND PERMANOVAS
+
+## NMDS Generation
+```{r Fungal NMDS, include=FALSE}
+library(vegan)
+library(ggplot2)
+library(labdsv)
+library(ggConvexHull)
+library(patchwork)
+
+data1 = read.csv(file="C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/Final ITS Table.csv", header=TRUE)  # ITS data, 183kb in size
+data1[,1:8] = lapply(data1[,1:8], as.factor)
+data1ht = hellinger(data1[,-c(1:12)]) #be sure to exclude plants.
+set.seed(621)
+nmds1 = metaMDS(data1ht, distance = "bray", autotransform = FALSE, k = 4, try = 100, trymax = 100) #stress = 0.1265138
+scores1 = as.data.frame(vegan::scores(nmds1)$sites)
+scores1full = cbind(data1[,1:12], scores1)
+
+# make figure command functions
+nmdsloadtime = function(inputscores, plottitle){
+  ggplot(inputscores, aes(x = NMDS1, y = NMDS2)) + 
+    geom_point(size = 3, aes(color = Time, shape = Time, alpha = Load)) +  
+    geom_convexhull(alpha = 0.1, aes(color=Time, fill = Load), fill = "grey", show.legend = FALSE) + 
+    scale_shape_manual(values=c(1, 2)) + labs(tag = plottitle) + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = 
+          element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))
+}
+nmdstime = function(inputscores, plottitle){ggplot(inputscores, aes(x = NMDS1, y = NMDS2)) + geom_point(size = 3, aes(color = Time, shape = Time)) +  geom_convexhull(alpha = 0.1, aes(color=Time), fill = "grey", show.legend = FALSE) + labs(tag = plottitle) + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = 
+          element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))
+}
+nmdsload = function(inputscores,plottitle){ggplot(inputscores, aes(x = NMDS1, y = NMDS2)) + geom_point(size = 3, aes(colour = Load, shape = Load)) +  geom_convexhull(alpha = 0.1, aes(color=Load), fill = "grey", show.legend = FALSE) + labs(tag = plottitle) + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = 
+          element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))
+}
+
+# Compose and Save figures
+outputpath1 = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/Statistical outputs and figures/All figures dumped/"
+
+##  Regime and Regime*Time
+p1 = ggplot(scores1full, aes(x = NMDS1, y = NMDS2)) + 
+    geom_point(size = 3, aes(color = Regime, shape = Regime, fill = Regime), stroke = 0.5) +
+  geom_convexhull(alpha = 0.1, aes(color = Regime, fill = Regime), show.legend = FALSE) +
+  scale_shape_manual(values = c(21, 24, 22)) +
+  scale_color_manual(values = c("#F8766D", "#00BA38", "#619CFF")) +
+  scale_fill_manual(values = c("#F8766D", "#00BA38", "#619CFF")) + 
+  scale_alpha_manual(values = c(0.3, 1)) +
+  labs(tag = "A") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = 
+          element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))
+
+p2 = ggplot(scores1full, aes(x = NMDS1, y = NMDS2)) + 
+    geom_point(size = 3, aes(color = Regime, shape = Regime, fill = Regime, alpha = Time), stroke = 0.5) +
+  geom_convexhull(alpha = 0.1, aes(color =  Regime, subgroup = Time, fill = Regime), show.legend = FALSE) +
+  scale_shape_manual(values = c(21, 24, 22)) +
+  scale_alpha_manual(values = c(0.2, 0.6, 1)) +
+  labs(tag = "B") + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = 
+          element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))
+(p1 / p2)
+ggsave(filename = n.frt, path = outputpath1, width = 6, height = 10, device = "tiff")
+
+p1 = nmdstime(subset(scores1full, Regime=="R1"), "A")
+p2 = nmdstime(subset(scores1full, Regime=="R4"), "B")
+p3 = nmdstime(subset(scores1full, Regime=="R5"), "C")
+(p1 / p2 / p3)
+ggsave(filename = n.frt3, path = outputpath1, width = 4.5, height = 10, device = "tiff")
+
+##  Load and Load*Time
+p1 = ggplot(scores1full, aes(x = NMDS1, y = NMDS2)) + geom_point(size = 3, aes(colour = Load, shape = Load)) +  geom_convexhull(alpha = 0.1, aes(color=Load), show.legend = FALSE) + scale_shape_manual(values=c(16, 17)) + labs(tag = "A") + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = 
+          element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))
+
+p2 = ggplot(scores1full, aes(x = NMDS1, y = NMDS2)) + geom_point(size = 3, aes(colour = Load, shape = Time)) +  geom_convexhull(alpha = 0.1, aes(colour = Load, subgroup=Time), fill = "grey", show.legend = FALSE) + scale_shape_manual(values=c(16, 17, 15)) + labs(tag = "B")+ 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = 
+          element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))
+(p1 / p2)
+ggsave(filename = n.flt, path = outputpath1, width = 6, height = 10, device = "tiff")
+
+p1 = nmdstime(subset(scores1full, Load=="L1"), "A")
+p2 = nmdstime(subset(scores1full, Load=="L2"), "B")
+(p1 / p2)
+ggsave(filename = n.flt2, path = outputpath1, width = 6, height = 10, device = "tiff")
+
+## Regime*Load, and by Regime*Load*Time
+ggplot(scores1full, aes(x = NMDS1, y = NMDS2)) + geom_point(size = 3, aes(colour = Regime, shape = Load)) +  geom_convexhull(alpha = 0.1, aes(color=Regime, subgroup = Load, fill = Regime), show.legend = FALSE) + scale_shape_manual(values=c(16, 17, 15)) + labs(tag = "") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))  #by Regime*Load
+ggsave(filename = n.frl, path = outputpath1, width = 9, height = 8, device = "tiff")
+
+p1 = nmdsload(subset(scores1full, Regime=="R1"), "A") #R1 by Load
+p2 = nmdsload(subset(scores1full, Regime=="R4"), "B") #R4 by Load
+p3 = nmdsload(subset(scores1full, Regime=="R5"), "C") #R5 by Load
+(p1 / p2 / p3)
+ggsave(filename = n.frl2, path = outputpath1, width = 4.5, height = 10, device = "tiff")
+
+p1 = nmdstime(subset(scores1full, Regime=="R1"&Load=="L1"), "A") #R1L1 by Time
+p2 = nmdstime(subset(scores1full, Regime=="R1"&Load=="L2"), "B") #R1L2 by Time
+p3 = nmdstime(subset(scores1full, Regime=="R4"&Load=="L1"), "C") #R4L1 by Time
+p4 = nmdstime(subset(scores1full, Regime=="R4"&Load=="L2"), "D") #R4L2 by Time
+p5 = nmdstime(subset(scores1full, Regime=="R5"&Load=="L1"), "E") #R5L1 by Time
+p6 = nmdstime(subset(scores1full, Regime=="R5"&Load=="L2"), "F") #R5L2 by Time
+
+((p1 | p2) / (p3 | p4) / (p5 | p6))
+ggsave(filename = n.frlt, path = outputpath1, width = 9, height = 10, device = "tiff")
+
+#rm(list=ls())
+```
+
+```{r Bacterial NMDS, include=FALSE}
+library(vegan)
+library(ggplot2)
+library(labdsv)
+library(ggConvexHull)
+library(patchwork)
+
+data2 = read.csv(file="C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/Final 16S Table.csv", header=TRUE)  # 16S data, 3.7mb in size
+data2[,1:8] = lapply(data2[,1:8], as.factor)
+data2ht = hellinger(data2[,-c(1:12)])
+set.seed(621)
+nmdsb = metaMDS(data2ht, distance = "bray", autotransform = FALSE, k = 4, try = 100, trymax = 100) #stress = 0.05830009, iteration 24
+scores1 = as.data.frame(vegan::scores(nmdsb)$sites)
+scores1full = cbind(data2[,1:8], scores1)
+
+# Compose and Save figures
+outputpath1 = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/Statistical outputs and figures/All figures dumped/"
+
+##  Regime and Regime*Time
+p1 = ggplot(scores1full, aes(x = NMDS1, y = NMDS2)) + 
+    geom_point(size = 3, aes(color = Regime, shape = Regime, fill = Regime), stroke = 0.5) +
+  geom_convexhull(alpha = 0.1, aes(color = Regime, fill = Regime), show.legend = FALSE) +
+  scale_shape_manual(values = c(21, 24, 22)) +
+  scale_color_manual(values = c("#F8766D", "#00BA38", "#619CFF")) +
+  scale_fill_manual(values = c("#F8766D", "#00BA38", "#619CFF")) + 
+  scale_alpha_manual(values = c(0.3, 1)) +
+  labs(tag = "A") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = 
+          element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))
+
+p2 = ggplot(scores1full, aes(x = NMDS1, y = NMDS2)) + 
+    geom_point(size = 3, aes(color = Regime, shape = Regime, fill = Regime, alpha = Time), stroke = 0.5) +
+  geom_convexhull(alpha = 0.1, aes(color =  Regime, subgroup = Time, fill = Regime), show.legend = FALSE) +
+  scale_shape_manual(values = c(21, 24, 22)) +
+  scale_alpha_manual(values = c(0.2, 0.6, 1)) +
+  labs(tag = "B") + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = 
+          element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))
+(p1 / p2)
+ggsave(filename = n.brt, path = outputpath1, width = 6, height = 10, device = "tiff")
+
+p1 = nmdstime(subset(scores1full, Regime=="R1"), "A")
+p2 = nmdstime(subset(scores1full, Regime=="R4"), "B")
+p3 = nmdstime(subset(scores1full, Regime=="R5"), "C")
+(p1 / p2 / p3)
+ggsave(filename = n.brt2, path = outputpath1, width = 4.5, height = 10, device = "tiff")
+
+##  Load and Load*Time
+p1 = ggplot(scores1full, aes(x = NMDS1, y = NMDS2)) + geom_point(size = 3, aes(colour = Load, shape = Load)) +  geom_convexhull(alpha = 0.1, aes(color=Load), show.legend = FALSE) + scale_shape_manual(values=c(16, 17)) + labs(tag = "A") + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = 
+          element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))
+p2 = ggplot(scores1full, aes(x = NMDS1, y = NMDS2)) + geom_point(size = 3, aes(colour = Load, shape = Time)) +  geom_convexhull(alpha = 0.1, aes(colour = Load, subgroup=Time), fill = "grey", show.legend = FALSE) + scale_shape_manual(values=c(16, 17, 15)) + labs(tag = "B")+ 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = 
+          element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))
+(p1 / p2)
+ggsave(filename = n.blt, path = outputpath1, width = 6, height = 10, device = "tiff")
+
+p1 = nmdstime(subset(scores1full, Load=="L1"), "A")
+p2 = nmdstime(subset(scores1full, Load=="L2"), "B")
+(p1 / p2)
+ggsave(filename = n.blt2, path = outputpath1, width = 6, height = 10, device = "tiff")
+
+## Regime*Load, and by Regime*Load*Time
+ggplot(scores1full, aes(x = NMDS1, y = NMDS2)) + geom_point(size = 3, aes(colour = Regime, shape = Load)) +  geom_convexhull(alpha = 0.1, aes(color=Regime, subgroup = Load, fill = Regime), show.legend = FALSE) + scale_shape_manual(values=c(16, 17, 15)) + labs(tag = "") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))  #by Regime*Load
+ggsave(filename = n.brl, path = outputpath1, width = 9, height = 8, device = "tiff")
+
+p1 = nmdsload(subset(scores1full, Regime=="R1"), "A") #R1 by Load
+p2 = nmdsload(subset(scores1full, Regime=="R4"), "B") #R4 by Load
+p3 = nmdsload(subset(scores1full, Regime=="R5"), "C") #R5 by Load
+
+(p1 / p2 / p3)
+ggsave(filename = n.brl2, path = outputpath1, width = 4.5, height = 10, device = "tiff")
+
+p1 = nmdstime(subset(scores1full, Regime=="R1"&Load=="L1"), "A") #R1L1 by Time
+p2 = nmdstime(subset(scores1full, Regime=="R1"&Load=="L2"), "B") #R1L2 by Time
+p3 = nmdstime(subset(scores1full, Regime=="R4"&Load=="L1"), "C") #R4L1 by Time
+p4 = nmdstime(subset(scores1full, Regime=="R4"&Load=="L2"), "D") #R4L2 by Time
+p5 = nmdstime(subset(scores1full, Regime=="R5"&Load=="L1"), "E") #R5L1 by Time
+p6 = nmdstime(subset(scores1full, Regime=="R5"&Load=="L2"), "F") #R5L2 by Time
+
+((p1 | p2) / (p3 | p4) / (p5 | p6))
+ggsave(filename = n.brlt, path = outputpath1, width = 9, height = 10, device = "tiff")
+
+#rm(list=ls())
+```
+
+## PERMANOVA analyses
+```{r PERMANOVA Fungi, include=FALSE}
+library(labdsv)
+library(vegan)
+devtools::install_github("pmartinezarbizu/pairwiseAdonis/pairwiseAdonis") 
+library(pairwiseAdonis) 
+
+data1 = read.csv(file= "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/Final ITS Table.csv", header=TRUE)  # ITS data, 183kb in size 
+#data1 <- data1[!(data1$R.L.P. %in% names(table(data1$R.L.P.)[table(data1$R.L.P.) < 4])), ]   # Drop unbalanced plots
+data1[,1:7] = lapply(data1[,1:7], as.factor)
+data1ht = hellinger(data1[,-c(1:11)])
+data1htds = vegdist(data1ht, method = "bray")
+
+anova(betadisper(data1htds, group = data1$R.L.T.)) # p = 0.08245 for homogeneous dispersion
+set.seed(621)
+
+adonis2(formula = data1htds ~ Regime + Load + Regime:Load + Juncus + Schoenoplectus + Spartina + Typha + (Regime/Plot) + (Regime/Plot)*Load + Time + Regime:Time + Load:Time + Regime:Load:Time + (Regime/Plot):Time + (Regime/Plot):Load:Time, data = data1[,1:11], strata= data1$R.L.P., permutations = 10000, by = "term", parallel = 8)
+
+# contrasts
+regimeA = model.matrix( ~ C(data1$Regime, c(2, -1, -1)))[,2]
+regimeB = model.matrix( ~ C(data1$Regime, c(0, 1, -1)))[,2]
+loaddd = model.matrix( ~ C(data1$Load, c(1, -1)))[,2]
+timeA = model.matrix( ~ C(data1$Time, c(2, -1, -1)))[,2]
+timeB = model.matrix( ~ C(data1$Time, c(0, 1, -1)))[,2]
+
+adonis2(formula = data1htds ~ regimeA + regimeB + loaddd + regimeA:loaddd + regimeB:loaddd + 
+          Juncus + Schoenoplectus + Spartina + Typha + 
+          (Regime/Plot) + (Regime/Plot):Load + 
+          Time + regimeA:timeA + regimeA:timeB + regimeB:timeA + regimeB:timeB + 
+          Regime:Load:Time + (Regime/Plot):Time + (Regime/Plot):Load:Time, 
+        data = data1[,1:11], strata= data1$R.L.P., permutations = 10000, by = "term", parallel = 8)
+
+#rm(list=ls())
+```
+
+```{r PERMANOVA Bacteria, include=FALSE}
+library(labdsv)
+library(vegan)
+devtools::install_github("pmartinezarbizu/pairwiseAdonis/pairwiseAdonis") 
+library(pairwiseAdonis)
+
+data1 = read.csv(file="C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/Final 16S Table.csv", header=TRUE)  # 16S data, 3.4mb in size
+data1[,1:7] = lapply(data1[,1:7], as.factor)
+data1ht = hellinger(data1[,-c(1:11)])
+#write.csv(data1ht, file = "C:/Users/daov9/Desktop/primer stuff/TF BACT Table.csv")
+data1htds = vegdist(data1ht, method = "bray")
+anova(betadisper(data1htds, group = data1$R.L.T.)) # p = 0.1224 for homogeneous dispersion
+
+set.seed(621)
+
+adonis2(formula = data1htds ~ Regime + Load + Regime:Load + Juncus + Schoenoplectus + Spartina + Typha + (Regime/Plot) + (Regime/Plot)*Load + Time + Regime:Time + Load:Time + Regime:Load:Time + (Regime/Plot):Time + (Regime/Plot):Load:Time, data = data1[,1:11], strata= data1$R.L.P., permutations = 10000, by = "term", parallel = 8)
+
+# contrasts
+regimeA = model.matrix( ~ C(data1$Regime, c(2, -1, -1)))[,2]
+regimeB = model.matrix( ~ C(data1$Regime, c(0, 1, -1)))[,2]
+loaddd = model.matrix( ~ C(data1$Load, c(1, -1)))[,2]
+timeA = model.matrix( ~ C(data1$Time, c(2, -1, -1)))[,2]
+timeB = model.matrix( ~ C(data1$Time, c(0, 1, -1)))[,2]
+
+adonis2(formula = data1htds ~ regimeA + regimeB + loaddd + regimeA:loaddd + regimeB:loaddd + 
+          Juncus + Schoenoplectus + Spartina + Typha + 
+          (Regime/Plot) + (Regime/Plot):Load + 
+          Time + regimeA:timeA + regimeA:timeB + regimeB:timeA + regimeB:timeB + 
+          Regime:Load:Time + (Regime/Plot):Time + (Regime/Plot):Load:Time, 
+        data = data1[,1:11], strata= data1$R.L.P., permutations = 10000, by = "term", parallel = 8)
+
+#rm(list=ls())
+```
+
+# ALPHA DIVERSITY
+
+## Alpha Diversity calculations
+```{r Alpha Diversity load in and fundamental calculations, include=FALSE}
+library(vegan)
+data1 = read.csv(file="C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/Final ITS Table.csv", header=TRUE)  # ITS data, 183kb in size
+data2 = read.csv(file="C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/Final 16S Table.csv", header=TRUE)  # 16S data, 3.7mb in size
+
+data1[,1:8] = lapply(data1[,1:8], as.factor)
+data2[,1:8] = lapply(data2[,1:8], as.factor)
+
+cases1 = data.frame(R.L.P. = levels(data1$R.L.P.), FullCase = summary(data1$R.L.P.)==4)
+cases2 = cases1[cases1$FullCase==TRUE,]$R.L.P.
+data1 = subset(data1, R.L.P. %in% cases2)
+
+cases1 = data.frame(R.L.P. = levels(data2$R.L.P.), FullCase = summary(data2$R.L.P.)==4)
+cases2 = cases1[cases1$FullCase==TRUE,]$R.L.P.
+data2 = subset(data2, R.L.P. %in% cases2)
+
+richness_plots = estimateR(data1[,-c(1:8)])
+evenness_plots = diversity(data1[,-c(1:8)], index = "shannon") / log(specnumber(data1[,-c(1:8)]))
+shannon_plots = diversity(data1[,-c(1:8)], index = "shannon")
+dataITS_alphadiv = cbind(data1[2:8], t(richness_plots), evenness_plots, shannon_plots)
+
+richness_plots = estimateR(data2[,-c(1:8)])
+evenness_plots = diversity(data2[,-c(1:8)], index = "shannon") / log(specnumber(data2[,-c(1:8)]))
+shannon_plots = diversity(data2[,-c(1:8)], index = "shannon")
+data16S_alphadiv = cbind(data2[2:8], t(richness_plots), evenness_plots, shannon_plots)
+
+F.rich = dataITS_alphadiv$S.obs
+F.even = dataITS_alphadiv$evenness_plots
+F.shan = dataITS_alphadiv$shannon_plots
+groupings = dataITS_alphadiv$R.L.T.
+
+B.rich = data16S_alphadiv$S.obs
+B.even = data16S_alphadiv$evenness_plots
+B.shan = data16S_alphadiv$shannon_plots
+```
+
+## Barplot
+```{r Barplots - Alpha Diversity}
+library(dplyr)
+library(plotrix)
+library(ggplot2)
+library(multcompView)
+library(patchwork)
+
+positionsFLT = c("R1L1D060", "R1L1D120", "R1L1D150",
+                 "R1L2D060", "R1L2D120", "R1L2D150",
+                 "R4L1D060", "R4L1D120", "R4L1D150",
+                 "R4L2D060", "R4L2D120", "R4L2D150",
+                 "R5L1D060", "R5L1D120", "R5L1D150",
+                 "R5L2D060", "R5L2D120", "R5L2D150")
+colorvalsFLT = c("R1L1D060" = "deepskyblue1", "R1L1D120"= "deepskyblue1", "R1L1D150"= "deepskyblue1",
+                 "R1L2D060" = "deepskyblue4", "R1L2D120" = "deepskyblue4", "R1L2D150" = "deepskyblue4",
+                 "R4L1D060" = "firebrick1", "R4L1D120" = "firebrick1", "R4L1D150" = "firebrick1",
+                 "R4L2D060" = "firebrick4", "R4L2D120" = "firebrick4", "R4L2D150" = "firebrick4",
+                 "R5L1D060" = "springgreen1", "R5L1D120" = "springgreen1", "R5L1D150" = "springgreen1",
+                 "R5L2D060" = "springgreen4", "R5L2D120" = "springgreen4", "R5L2D150" = "springgreen4")
+
+makebarplot2 = function(yvar, dataset, ylabel, paneltag){
+  dt1 = group_by({{dataset}}, R.L.T.) %>%  summarise(meani = mean({{yvar}}), CI95 = qt(0.025, df = (n() - 1)) * sd({{yvar}}) / sqrt(n())) %>%  arrange(desc(meani))
+  ggplot(dt1, aes(x=R.L.T., y=meani)) +   
+    geom_bar(stat = "identity", aes(fill = R.L.T.), show.legend = FALSE) +     
+    geom_errorbar(aes(ymin = meani-CI95, ymax=meani+CI95), width = 0.2) +  
+    labs(x = "Treatment combination", y = ylabel, tag = paneltag) +
+    scale_x_discrete(limits = rev(positionsFLT)) +  
+    scale_fill_manual("legend", values = colorvalsFLT) + 
+        coord_flip() + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = 
+          element_rect(colour = "black", fill=NA, size=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1))
+}
+
+F.Rich = makebarplot2(S.obs,          dataITS_alphadiv, "Fungal Richness", "A")
+F.Even = makebarplot2(evenness_plots, dataITS_alphadiv, "Fungal Evenness", "B")
+F.Dive = makebarplot2(shannon_plots,  dataITS_alphadiv, "Fungal Shannon Diversity", "C")
+B.Rich = makebarplot2(S.obs,          data16S_alphadiv, "Bacterial Richness", "A")
+B.Even = makebarplot2(evenness_plots, data16S_alphadiv, "Bacterial Evenness", "B")
+B.Dive = makebarplot2(shannon_plots,  data16S_alphadiv, "Bacterial Shannon Diversity", "C") + ylim(0,7)
+
+FADivs = (F.Rich / F.Even / F.Dive)
+BADivs = (B.Rich / B.Even / B.Dive)
+
+outputpath1 = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/Statistical outputs and figures/All figures dumped/"
+
+ggsave(f.adivF, plot = FADivs, path = outputpath1, device = "tiff", width = 20, height = 30, units = "cm")
+ggsave(f.adivB, plot = BADivs, path = outputpath1, device = "tiff", width = 20, height = 30, units = "cm")
+```
+
+## Supplemental Boxplots
+```{r BOXPLOTS - Alpha Diversity, include=FALSE}
+library(ggplot2)
+library(rlang)
+library(patchwork)
+makeboxplot1 = function(data,xmain, xseclevel, yresp, figpaneltag){ggplot(data,aes(y={{yresp}}, x={{xmain}}, fill = {{xseclevel}}))  + geom_boxplot() + labs(x= '', y= '', tag = figpaneltag) +   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), panel.border = element_rect(colour = "black", fill=NA, linewidth=1), legend.box.background=element_rect(), legend.box.margin=margin(1,1,1,1), text = element_text(size = 15))}
+
+F.rich.RT = makeboxplot1(dataITS_alphadiv, xmain= Regime, xseclevel = Time, yresp = S.obs, "A")
+F.even.RT = makeboxplot1(dataITS_alphadiv, Regime, Time, evenness_plots, "B")
+F.shan.RT = makeboxplot1(dataITS_alphadiv, Regime, Time, shannon_plots,  "C")
+B.rich.RT = makeboxplot1(data16S_alphadiv, Regime, Time, S.obs,  "D")
+B.even.RT = makeboxplot1(data16S_alphadiv, Regime, Time, evenness_plots,  "E")
+B.shan.RT = makeboxplot1(data16S_alphadiv, Regime, Time, shannon_plots,  "F")
+
+positionsFL = c("R1.L1","R1.L2","R4.L1","R4.L2","R5.L1","R5.L2")
+F.rich.RLT = makeboxplot1(dataITS_alphadiv, interaction(Regime,Load), Time, S.obs,  "A") + scale_x_discrete(limits = positionsFL)
+F.even.RLT = makeboxplot1(dataITS_alphadiv, interaction(Regime,Load), Time, evenness_plots, "B") + scale_x_discrete(limits = positionsFL)
+F.shan.RLT = makeboxplot1(dataITS_alphadiv, interaction(Regime,Load), Time, shannon_plots,  "C") + scale_x_discrete(limits = positionsFL)
+B.rich.RLT = makeboxplot1(data16S_alphadiv, interaction(Regime,Load), Time, S.obs,  "D") + scale_x_discrete(limits = positionsFL)
+B.even.RLT = makeboxplot1(data16S_alphadiv, interaction(Regime,Load), Time, evenness_plots, "E") + scale_x_discrete(limits = positionsFL)
+B.shan.RLT = makeboxplot1(data16S_alphadiv, interaction(Regime,Load), Time, shannon_plots,  "F") + scale_x_discrete(limits = positionsFL)
+
+alphametricsFT = (F.rich.RT | F.even.RT | F.shan.RT) / (B.rich.RT | B.even.RT | B.shan.RT)
+alphametricsFT
+
+alphametricsFLT = (F.rich.RLT | F.even.RLT | F.shan.RLT) / (B.rich.RLT | B.even.RLT | B.shan.RLT)
+alphametricsFLT
+
+outputpath1 = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/Statistical outputs and figures/All figures dumped/"
+ggsave(f.adivboxrt, plot= alphametricsFT, path = outputpath1, device = "tiff", width = 15, height = 7)
+ggsave(f.adivboxrlt, plot= alphametricsFLT, path = outputpath1, device = "tiff", width = 15, height = 7)
+
+rm(data1, data2, alphametricsFT, alphametricsFLT, F.rich.RT, F.even.RT, F.shan.RT, B.rich.RT, B.even.RT, B.shan.RT, F.rich.RLT, F.even.RLT, F.shan.RLT, B.rich.RLT, B.even.RLT, B.shan.RLT)
+```
+
+## Alpha Diversity Statistics
+```{r Alpha Diversity Metrics}
+library(glmmTMB)
+library(lme4)
+library(car)
+library(DHARMa)
+
+regimeA = model.matrix( ~ C(dataITS_alphadiv$Regime, c(1, -0.5, -0.5)))[,2]
+regimeB = model.matrix( ~ C(dataITS_alphadiv$Regime, c(0, 1, -1)))[,2]
+loaddd = model.matrix( ~ C(dataITS_alphadiv$Load, c(1, -1)))[,2]
+timeA = model.matrix( ~ C(dataITS_alphadiv$Time, c(1, -0.5, -0.5)))[,2]
+timeB = model.matrix( ~ C(dataITS_alphadiv$Time, c(0, 1, -1)))[,2]
+
+# Richness, poisson with log link
+Anova(glmmTMB(F.rich ~ Regime*Load*Time + (1|Regime/Plot), data=dataITS_alphadiv, family = poisson(link='log')),type = "III")
+plot(simulateResiduals(fittedModel = frichmodel))
+
+Anova(glmmTMB((F.rich) ~ regimeA*Load*Time + (1|Regime/Plot), data=dataITS_alphadiv, family = poisson(link='log')), type="III")
+Anova(glmmTMB((F.rich) ~ regimeB*Load*Time + (1|Regime/Plot), data=dataITS_alphadiv, family = poisson(link='log')), type="III")
+
+Anova(glmmTMB((F.rich) ~ Regime*Load*timeA + (1|Regime/Plot), data=dataITS_alphadiv, family = poisson(link='log')), type="III")
+Anova(glmmTMB((F.rich) ~ Regime*Load*timeB + (1|Regime/Plot), data=dataITS_alphadiv, family = poisson(link='log')), type="III")
+
+Anova(glmmTMB((F.rich) ~ regimeA*Load*timeA + (1|Regime/Plot), data=dataITS_alphadiv, family = poisson(link='log')), type="III")
+Anova(glmmTMB((F.rich) ~ regimeA*Load*timeB + (1|Regime/Plot), data=dataITS_alphadiv, family = poisson(link='log')), type="III")
+Anova(glmmTMB((F.rich) ~ regimeB*Load*timeA + (1|Regime/Plot), data=dataITS_alphadiv, family = poisson(link='log')), type="III")
+Anova(glmmTMB((F.rich) ~ regimeB*Load*timeB + (1|Regime/Plot), data=dataITS_alphadiv, family = poisson(link='log')), type="III")
+
+# Evenness, beta with logit link
+fevenmodel = glmmTMB(F.even ~ Regime*Load*Time + (1|Regime/Plot), data=dataITS_alphadiv, family = beta_family(link = "logit"))
+plot(simulateResiduals(fittedModel = fevenmodel))
+Anova(fevenmodel, type = "III")
+
+# Shannon diversity, gamma with log link
+fshanmodel = glmmTMB(F.shan ~ Regime*Load*Time + (1|Regime/Plot), data=dataITS_alphadiv, family = Gamma(link="log"))
+plot(simulateResiduals(fittedModel = fshanmodel))
+Anova(fshanmodel, type = "III")
+
+################################################################################
+# Bacteria
+# Richness, poisson with log link
+brichmodel = glmmTMB(B.rich ~ Regime*Load*Time + (1|Regime/Plot), data=data16S_alphadiv, family = poisson(link='log'))
+plot(simulateResiduals(fittedModel = brichmodel))
+Anova(brichmodel, type = "III")
+
+Anova(glmmTMB(B.rich ~ regimeA*Load*Time + (1|Regime/Plot), data=data16S_alphadiv, family = poisson(link='log')), type="III") 
+Anova(glmmTMB(B.rich ~ regimeB*Load*Time + (1|Regime/Plot), data=data16S_alphadiv, family = poisson(link='log')), type="III") 
+
+Anova(glmmTMB(B.rich ~ Regime*Load*timeA + (1|Regime/Plot), data=data16S_alphadiv, family = poisson(link='log')), type="III")
+Anova(glmmTMB(B.rich ~ Regime*Load*timeB + (1|Regime/Plot), data=data16S_alphadiv, family = poisson(link='log')), type="III") 
+
+Anova(glmmTMB(B.rich ~ regimeA*Load*timeA + (1|Regime/Plot), data=data16S_alphadiv, family = poisson(link='log')), type="III")
+Anova(glmmTMB(B.rich ~ regimeA*Load*timeB + (1|Regime/Plot), data=data16S_alphadiv, family = poisson(link='log')), type="III") 
+Anova(glmmTMB(B.rich ~ regimeB*Load*timeA + (1|Regime/Plot), data=data16S_alphadiv, family = poisson(link='log')), type="III") 
+Anova(glmmTMB(B.rich ~ regimeB*Load*timeB + (1|Regime/Plot), data=data16S_alphadiv, family = poisson(link='log')), type="III")
+
+# Evenness, beta with logit link
+bevenmodel = glmmTMB(B.even ~ Regime*Load*Time + (1|Regime/Plot), data=data16S_alphadiv, family = beta_family(link = "logit"))
+plot(simulateResiduals(fittedModel = bevenmodel))
+Anova(bevenmodel, type = "III")
+Anova(glmmTMB(B.even ~ regimeA*Load*Time + (1|Regime/Plot), data=data16S_alphadiv, family = beta_family(link = "logit")), type="III")
+Anova(glmmTMB(B.even ~ regimeB*Load*Time + (1|Regime/Plot), data=data16S_alphadiv, family = beta_family(link = "logit")), type="III")
+
+# Shannon diversity, gamma with log link
+bshanmodel = glmmTMB(B.shan ~ Regime*Load*Time + (1|Regime/Plot), data=data16S_alphadiv, family = Gamma(link="log"))     
+plot(simulateResiduals(fittedModel = bshanmodel))
+Anova(bshanmodel, type = "III")
+Anova(glmmTMB(B.shan ~ regimeA*Load*Time + (1|Regime/Plot), data=data16S_alphadiv, family = Gamma(link="log")), type="III") 
+Anova(glmmTMB(B.shan ~ regimeB*Load*Time + (1|Regime/Plot), data=data16S_alphadiv, family = Gamma(link="log")), type="III")
+
+Anova(glmmTMB(B.shan ~ regimeA*Load*timeA + (1|Regime/Plot), data=data16S_alphadiv, family = Gamma(link="log")), type="III") 
+Anova(glmmTMB(B.shan ~ regimeA*Load*timeB + (1|Regime/Plot), data=data16S_alphadiv, family = Gamma(link="log")), type="III") 
+Anova(glmmTMB(B.shan ~ regimeB*Load*timeA + (1|Regime/Plot), data=data16S_alphadiv, family = Gamma(link="log")), type="III")
+Anova(glmmTMB(B.shan ~ regimeB*Load*timeB + (1|Regime/Plot), data=data16S_alphadiv, family = Gamma(link="log")), type="III")
+```
+
+```{r Alpha Diversity clean up}
+rm(list=ls())
+```
+
+# INDICATOR SPECIES ANALYSIS
+
+## Processing
+```{r indicator data load in, include=FALSE}
+library(indicspecies)
+dataFind = read.csv(file="C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/fungi indicator input.csv", header=TRUE)
+dataBind = read.csv(file="C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/bact indicator input.csv", header=TRUE)
+metadata1 = read.csv(file = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/final metadata.csv", header=TRUE)
+
+unique(dataFind$Phylum) #316 orders, 396 families, 688 genera
+unique(dataBind$Phylum) #55 orders, 109 families, 153 genera
+colnamesall = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species", "VDTF001", "VDTF004", "VDTF006", "VDTF008", "VDTF009", "VDTF010", "VDTF011", "VDTF012", "VDTF013", "VDTF014", "VDTF015", "VDTF016", "VDTF017", "VDTF018", "VDTF019", "VDTF020", "VDTF021", "VDTF022", "VDTF023", "VDTF024", "VDTF025", "VDTF026", "VDTF027", "VDTF028", "VDTF029", "VDTF031", "VDTF032", "VDTF035", "VDTF037", "VDTF039", "VDTF040", "VDTF041", "VDTF042", "VDTF043", "VDTF044", "VDTF045", "VDTF046", "VDTF047", "VDTF050", "VDTF051", "VDTF052", "VDTF053", "VDTF054", "VDTF055", "VDTF056", "VDTF057", "VDTF058", "VDTF059", "VDTF060", "VDTF061", "VDTF062", "VDTF063", "VDTF065", "VDTF066", "VDTF067", "VDTF068", "VDTF069", "VDTF071", "VDTF072", "VDTF073", "VDTF074", "VDTF077", "VDTF078", "VDTF079", "VDTF081", "VDTF082", "VDTF083", "VDTF084", "VDTF085", "VDTF086", "VDTF087", "VDTF088", "VDTF089", "VDTF090", "VDTF091", "VDTF092", "VDTF093", "VDTF096", "VDTF097", "VDTF099", "VDTR100", "VDTR101", "VDTR104", "VDTR105", "VDTR106", "VDTR107", "VDTR109", "VDTR110", "VDTR111", "VDTR113", "VDTR114", "VDTR117", "VDTR118", "VDTR119", "VDTR120", "VDTR121", "VDTR122", "VDTR123", "VDTR124", "VDTR126", "VDTR128", "VDTR129", "VDTR131", "VDTR132", "VDTR133", "VDTR134", "VDTR135", "VDTR136", "VDTR137", "VDTR138", "VDTR140", "VDTR141", "VDTR142", "VDTR143", "VDTR144", "VDTR145", "VDTR146", "VDTR148", "VDTR149", "VDTR150", "VDTR155", "VDTR156", "VDTR157", "VDTR158", "VDTR159", "VDTR160", "VDTR161", "VDTR162", "VDTR163", "VDTR164", "VDTR165", "VDTR166")
+```
+
+```{r fungal indicators, include=FALSE}
+#         Family         
+leveltorun = dataFind$Family  #change this to taxa level of choice
+length(unique(dataFind$Family))  #change this to taxa level of choice
+#subset data for analysis
+dftaxa = data.frame(matrix(nrow = 0, ncol = length(dataFind)))
+dfsums = data.frame(matrix(nrow = 0, ncol = length(dataFind)-7))
+colnames(dftaxa) <- colnamesall
+for (i in 1:length(unique(leveltorun))){
+  taxa1 = subset(dataFind,Family== unique(leveltorun)[i])[1,1:5]  #change this to taxa level of choice
+  dftaxa = rbind(dftaxa,taxa1)
+}
+for (i in 1:length(unique(leveltorun))){
+row1 = subset(dataFind,Family== unique(leveltorun)[i])[,8:length(dataFind)]  #change this to taxa level of choice
+sum1 = colSums(row1)
+dfsums = rbind(dfsums,sum1)
+}
+colnames(dfsums) <- colnamesall[-c(1:8)]
+taxasums = cbind(dftaxa$Family,dfsums)  #change this to taxa level of choice
+taxasums[is.na(taxasums)] <- "Unknown"
+taxasums = taxasums[!taxasums[,1]=="Unknown",]
+rownames(taxasums) <- taxasums[,1]
+taxasums = taxasums[,-1]
+FIndic = data.frame(t(taxasums))
+
+#perform actual analysis
+set.seed(621)
+indicR = multipatt(x = FIndic, cluster = metadata1$Regime, func = "r.g")
+indicL = multipatt(x = FIndic, cluster = metadata1$Load, func = "r.g")
+indicRT = multipatt(x = FIndic, cluster = metadata1$Regime.Time, func = "r.g")
+summary(indicR)
+summary(indicRT)
+
+View(data.frame(indicR$str))
+```
+
+```{r fungi extract family associations}
+fungReg = c("Aspergillaceae", "Bionectriaceae", "Branch03_fam_Incertae_sedis", "Bulleribasidiaceae", "Capnodiaceae", "Chaetomiaceae", "Coniochaetaceae", "Cuniculitremaceae", "Didymosphaeriaceae", "GS13_fam_Incertae_sedis", "Kappamycetaceae", "Lasiosphaeriaceae", "Lentitheciaceae", "Mortierellaceae", "Naviculisporaceae", "Papulosaceae", "Pleosporaceae", "Roussoellaceae", "Sporormiaceae", "Stachybotryaceae", "Terramycetaceae", "Thyridiaceae", "Xylariaceae")
+fungLoad = c("Rozellomycota_fam_Incertae_sedis")
+fungRegTime=c("Aspergillaceae", "Bionectriaceae", "Branch03_fam_Incertae_sedis", "Bulleribasidiaceae", "Capnodiaceae", "Chaetomiaceae", "Cuniculitremaceae", "Didymosphaeriaceae", "GS13_fam_Incertae_sedis", "Hypocreales_fam_Incertae_sedis", "Lasiosphaeriaceae", "Lentitheciaceae", "Mycosphaerellaceae", "Naviculisporaceae", "Nectriaceae", "Parabambusicolaceae", "Pestalotiopsidaceae", "Pezizomycotina_fam_Incertae_sedis", "Phaeosphaeriaceae", "Plectosphaerellaceae", "Pleosporaceae", "Podoscyphaceae", "Psathyrellaceae", "Rhynchogastremataceae", "Roussoellaceae", "Stachybotryaceae", "Terramycetaceae", "Thyridiaceae", "Trichosphaeriaceae", "Xylariaceae")
+
+DFReg = data.frame(indicR$str)
+DFReg = DFReg[(row.names(DFReg)) %in% fungReg, ]
+
+DFLod = data.frame(indicL$str)
+DFLod = DFLod[(row.names(DFLod)) %in% fungLoad, ]
+
+DFRegTime = data.frame(indicRT$str)
+DFRegTime = DFRegTime[(row.names(DFRegTime)) %in% fungRegTime, ]
+
+View(DFReg)
+View(DFLod)
+View(DFRegTime)
+```
+
+```{r bacterial indicators, include=FALSE}
+#Family
+leveltorun = (dataBind$Family)   #change this to taxa level of choice
+length(unique(dataBind$Family))  #change this to taxa level of choice
+#subset data for analysis
+dftaxa = data.frame(matrix(nrow = 0, ncol = length(dataBind)))
+dfsums = data.frame(matrix(nrow = 0, ncol = length(dataBind)-7))
+colnames(dftaxa) <- colnamesall
+for (i in 1:length(unique(leveltorun))){
+  taxa1 = subset(dataBind,Family== unique(leveltorun)[i])[1,1:5]  #change this to taxa level of choice
+  dftaxa = rbind(dftaxa,taxa1)
+}
+for (i in 1:length(unique(leveltorun))){
+row1 = subset(dataBind,Family== unique(leveltorun)[i])[,8:length(dataBind)]  #change this to taxa level of choice
+sum1 = colSums(row1)
+dfsums = rbind(dfsums,sum1)
+}
+colnames(dfsums) <- colnamesall[-c(1:8)]
+taxasums = cbind(dftaxa$Family,dfsums)  #change this to taxa level of choice
+taxasums[is.na(taxasums)] <- "Unknown"
+taxasums = taxasums[!taxasums[,1]=="Unknown",]
+rownames(taxasums) <- taxasums[,1]
+taxasums = taxasums[,-1]
+BIndic = data.frame(t(taxasums))
+
+set.seed(621)
+indicR = multipatt(x = BIndic, cluster = metadata1$Regime, func = "r.g")
+indicL = multipatt(x = BIndic, cluster = metadata1$Load, func = "r.g")
+indicRT = multipatt(x = BIndic, cluster = metadata1$Regime.Time, func = "r.g")
+
+summary(indicR)
+summary(indicRT)
+```
+
+```{r bacteria extract associations}
+bacReg = c("A0839", "A4b", "Acholeplasmataceae", "Acidimicrobiaceae", "Acidobacteriaceae..Subgroup.1.", "Aeromonadaceae", "AKAU3564.sediment.group", "AKYH767", "Alcaligenaceae", "Alicyclobacillaceae", "Anaeromyxobacteraceae", "Ancalomicrobiaceae", "Armatimonadaceae", "Azospirillaceae", "B1.7BS", "B122", "Babeliaceae", "Barnesiellaceae", "Blastocatellaceae", "BSV40", "Caldilineaceae", "Calditrichaceae", "Candidatus.Iainarchaeum", "Candidatus.Jidaibacter", "Cellvibrionaceae", "Chitinimonadaceae", "Chlorobiaceae", "Chloroflexaceae", "Chloroherpetonaceae", "Chthoniobacteraceae", "Chthonomonadaceae", "Cloacimonadaceae", "Clostridiaceae", "Competibacteraceae", "Coxiellaceae", "cvE6", "Cyanobacteriaceae", "Cyanobacteriales.Incertae.Sedis", "Cyclobacteriaceae", "Cytophagaceae", "Defferrisomataceae", "Dehalococcoidaceae", "Demequinaceae", "Desulfatiglandaceae", "Desulfitobacteriaceae", "Desulfobaccaceae", "Desulfobacteraceae", "Desulfobulbaceae", "Desulfomicrobiaceae", "Desulfurivibrionaceae", "DEV007", "Diplorickettsiaceae", "Dongiaceae", "Dysgonomonadaceae", "Elusimicrobiaceae", "Endomicrobiaceae", "Enterobacteriaceae", "Ethanoligenenaceae", "Ferrovibrionaceae", "Fibrobacteraceae", "Frankiaceae", "Gallionellaceae", "Geminicoccaceae", "Gemmatimonadaceae", "Geobacteraceae", "GW2011_GWC1_47_15", "GZKB124", "Halieaceae", "Hydrogenedensaceae", "Hyphomicrobiaceae", "Hyphomonadaceae", "Intrasporangiaceae", "Isosphaeraceae", "Izemoplasmataceae", "JG30.KF.AS9", "JG30.KF.CM45", "Kaistiaceae", "KD1.131", "KI89A.clade", "Kiritimatiellaceae", "koll11", "Koribacteraceae", "Kryptoniaceae", "Ktedonobacteraceae", "Lachnospiraceae", "LD.RB.34", "Lenti.02", "Leptospirillaceae", "Limnotrichaceae", "LiUU.11.161", "LKC2.127.25", "Marinifilaceae", "Marinilabiliaceae", "Mariprofundaceae", "Melioribacteraceae", "Methanobacteriaceae", "Methanocellaceae", "Methanomassiliicoccaceae", "Methanoregulaceae", "Methanosarcinaceae", "Methanospirillaceae", "Methylacidiphilaceae", "Methylococcaceae", "Methylophilaceae", "Micavibrionaceae", "Microbacteriaceae", "Microcystaceae", "Micromonosporaceae", "Microtrichaceae", "Moraxellaceae", "MSB.3C8", "MSBL8", "Nannocystaceae", "Nitrosomonadaceae", "NK.L14", "Nocardioidaceae", "Nodosilineaceae", "Nostocaceae", "NS9.marine.group", "Obscuribacteraceae", "Oligoflexaceae", "Oxalobacteraceae", "Oxobacteraceae", "Paenibacillaceae", "Paracaedibacteraceae", "Peptostreptococcaceae", "Phaselicystidaceae", "Phormidiaceae", "Pseudanabaenaceae", "Pseudohongiellaceae", "Pseudomonadaceae", "Pseudonocardiaceae", "Puniceicoccaceae", "Reyranellaceae", "Rhizobiaceae", "Rhodospirillaceae", "Rhodothermaceae", "Rikenellaceae", "Roseiflexaceae", "Rs.E47.termite.group", "Rubinisphaeraceae", "S15A.MN91", "Saprospiraceae", "SC.I.84", "Silvanigrellaceae", "Simkaniaceae", "SM23.30", "Solimonadaceae", "Solirubrobacteraceae", "Sphingomonadaceae", "Sporichthyaceae", "Sporolactobacillaceae", "Sporomusaceae", "ST.12K33", "Sulfuricellaceae", "Sulfurimonadaceae", "Sulfurospirillaceae", "Sumerlaeaceae", "Sutterellaceae", "Syntrophaceae", "Tannerellaceae", "Tepidisphaeraceae", "Thermoanaerobaculaceae", "Thioalkalispiraceae", "Thiotrichaceae", "Trueperaceae", "Unknown.Family", "Vicinamibacteraceae", "Vulgatibacteraceae", "Williamwhitmaniaceae", "X211ds20", "X4572.13", "X67.14", "Xanthomonadaceae", "Xenococcaceae", "Z4MB62")
+bacLoad = c("Acidimicrobiaceae", "Barnesiellaceae", "CG1.02.57.44", "Ferrovibrionaceae", "Mariprofundaceae", "Neisseriaceae", "Sporolactobacillaceae", "Tepidisphaeraceae", "Thioalkalispiraceae")
+
+bacRegTime = c("A0839", "A4b", "Abditibacteriaceae", "Acholeplasmataceae", "Acidimicrobiaceae", "Acidobacteriaceae..Subgroup.1.", "Aeromonadaceae", "AKAU3564.sediment.group", "AKYH767", "Alcaligenaceae", "Alicyclobacillaceae", "Anaeromyxobacteraceae", "Ancalomicrobiaceae", "Arcobacteraceae", "Armatimonadaceae", "Azospirillaceae", "B1.7BS", "B122", "Babeliaceae", "Bacillaceae", "Bacteriovoracaceae", "Bdellovibrionaceae", "BIrii41", "Blastocatellaceae", "Brevinemataceae", "BSV40", "Caldilineaceae", "Calditrichaceae", "Campylobacteraceae", "Candidatus.Jidaibacter", "Chitinimonadaceae", "Chlorobiaceae", "Chloroflexaceae", "Chloroherpetonaceae", "Chthoniobacteraceae", "Chthonomonadaceae", "Cloacimonadaceae", "Clostridiaceae", "Competibacteraceae", "Coxiellaceae", "Crocinitomicaceae", "CWT.CU03.E12", "Cyanobacteriaceae", "Cyanobacteriales.Incertae.Sedis", "Cyclobacteriaceae", "Cytophagaceae", "Defferrisomataceae", "Demequinaceae", "Desulfarculaceae", "Desulfatiglandaceae", "Desulfitobacteriaceae", "Desulfobaccaceae", "Desulfobacteraceae", "Desulfobulbaceae", "Desulfomicrobiaceae", "Desulfotomaculaceae", "Desulfurivibrionaceae", "DEV007", "Devosiaceae", "Diplorickettsiaceae", "Dongiaceae", "Dysgonomonadaceae", "Elusimicrobiaceae", "Enterobacteriaceae", "env.OPS.17", "Ethanoligenenaceae", "Ferrovibrionaceae", "Fibrobacteraceae", "Flavobacteriaceae", "Frankiaceae", "Gallionellaceae", "Geminicoccaceae", "Gemmataceae", "Gemmatimonadaceae", "Geobacteraceae", "GW2011_GWC1_47_15", "GZKB124", "Haliangiaceae", "Halieaceae", "Haloplasmataceae", "Holophagaceae", "Holosporaceae", "Hydrogenedensaceae", "Hydrogenophilaceae", "Hyphomicrobiaceae", "Hyphomonadaceae", "Ignavibacteriaceae", "Intrasporangiaceae", "Isosphaeraceae", "Izemoplasmataceae", "JG30.KF.CM45", "Kaistiaceae", "KD1.131", "KD3.93", "KI89A.clade", "Kineosporiaceae", "Kiritimatiellaceae", "Koribacteraceae", "Kryptoniaceae", "Lachnospiraceae", "Latescibacteraceae", "LD.RB.34", "Legionellaceae", "Leptospiraceae", "Leptospirillaceae", "Limnotrichaceae", "LiUU.11.161", "LKC2.127.25", "Marinifilaceae", "Marinilabiliaceae", "Mariprofundaceae", "Melioribacteraceae", "Methanobacteriaceae", "Methanocellaceae", "Methanoregulaceae", "Methanosarcinaceae", "Methanospirillaceae", "Methylacidiphilaceae", "Methylococcaceae", "Methylophilaceae", "Micavibrionaceae", "Microbacteriaceae", "Microcystaceae", "Micromonosporaceae", "Moraxellaceae", "MSB.3C8", "MSBL8", "Mycobacteriaceae", "Myxococcaceae", "Nannocystaceae", "Nitrosococcaceae", "Nitrosomonadaceae", "Nitrospiraceae", "Nocardioidaceae", "Nodosilineaceae", "Nostocaceae", "NS11.12.marine.group", "NS9.marine.group", "Obscuribacteraceae", "Oligoflexaceae", "Omnitrophaceae", "Oxalobacteraceae", "Oxobacteraceae", "Paracaedibacteraceae", "Parachlamydiaceae", "Parvibaculaceae", "Peptostreptococcaceae", "Phaselicystidaceae", "Phormidiaceae", "Phycisphaeraceae", "Pirellulaceae", "Polyangiaceae", "Pseudanabaenaceae", "Pseudohongiellaceae", "Pseudomonadaceae", "Pseudonocardiaceae", "Puniceicoccaceae", "Reyranellaceae", "Rhizobiaceae", "Rhizobiales.Incertae.Sedis", "Rhodocyclaceae", "Rhodomicrobiaceae", "Rhodospirillaceae", "Rhodothermaceae", "Rickettsiaceae", "Rikenellaceae", "Roseiflexaceae", "Rs.E47.termite.group", "Rubinisphaeraceae", "Rubritaleaceae", "Sandaracinaceae", "Saprospiraceae", "SC.I.84", "SCGC.AAA011.D5", "Schlesneriaceae", "SG8.4", "Simkaniaceae", "SM1B06", "SM23.30", "SM2D12", "Solimonadaceae", "Solirubrobacteraceae", "Sphingobacteriaceae", "Sphingomonadaceae", "Sporichthyaceae", "Sporolactobacillaceae", "Sporomusaceae", "SR.FBR.L83", "ST.12K33", "Steroidobacteraceae", "Sulfuricellaceae", "Sulfurimonadaceae", "Sulfurospirillaceae", "Sumerlaeaceae", "Sutterellaceae", "Syntrophaceae", "Syntrophobacteraceae", "Tannerellaceae", "Thermoanaerobaculaceae", "Thioalkalispiraceae", "Thiotrichaceae", "TRA3.20", "Unknown.Family", "Verrucomicrobiaceae", "Vicinamibacteraceae", "Williamwhitmaniaceae", "X211ds20", "X67.14", "Xanthomonadaceae", "Xenococcaceae", "Z4MB62")
+
+DFReg = data.frame(indicR$str)
+DFReg = DFReg[(row.names(DFReg)) %in% bacReg, ]
+
+DFLod = data.frame(indicL$str)
+DFLod = DFLod[(row.names(DFLod)) %in% bacLoad, ]
+
+DFRegTime = data.frame(indicRT$str)
+DFRegTime = DFRegTime[(row.names(DFRegTime)) %in% bacRegTime, ]
+
+View(DFReg)
+View(DFLod)
+View(DFRegTime)
+```
+
+
+# FUNCTIONAL INFERENCES, PICRUST2 AND FUNGUILD
+
+## Dataset Processing
+```{r functional inference dataset processing}
+# Fungi subsetting
+dataFinf = read.csv(file="C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/fungi to subset.csv", header=TRUE)
+
+Ffams = c("Didymosphaeriaceae", "Roussoellaceae", "Xylariaceae", "Aspergillaceae", "Branch03_fam_Incertae_sedis", "Bulleribasidiaceae", "GS13_fam_Incertae_sedis", "Lentitheciaceae", "Mycosphaerellaceae", "Pezizomycotina_fam_Incertae_sedis", "Pleosporaceae", "Terramycetaceae", "")
+
+FtaxESV = data.frame(matrix(ncol=length(dataFinf),nrow=0))
+colnames(FtaxESV) = names(dataFinf)
+for (i in 1:length(Ffams)){
+df1 = subset(dataFinf, dataFinf$Family==Ffams[i])  
+FtaxESV = rbind(FtaxESV, df1)
+}
+FtaxESV = FtaxESV[order(FtaxESV$Counter),]
+
+write.csv(FtaxESV, file = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/anything related to bioinformatics, sequencing/funguildr input/funguildr input1.csv", quote = FALSE, row.names=FALSE)
+
+# Bacteria subsetting
+dataBinf = read.csv(file="C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/bact data to subset.csv", header=TRUE)
+
+Bfams = c("A0839", "A4b", "Acidobacteriaceae..Subgroup.1.", "Aeromonadaceae", "Alcaligenaceae", "Alicyclobacillaceae", "Anaeromyxobacteraceae", "Ancalomicrobiaceae", "Azospirillaceae", "B1.7BS", "B122", "Blastocatellaceae", "Caldilineaceae", "Calditrichaceae", "Chloroflexaceae", "Cloacimonadaceae", "Cyanobacteriaceae", "Cyanobacteriales.Incertae.Sedis", "Defferrisomataceae", "Desulfatiglandaceae", "Desulfitobacteriaceae", "Desulfobaccaceae", "Desulfobacteraceae", "Desulfobulbaceae", "Desulfomicrobiaceae", "DEV007", "Diplorickettsiaceae", "Dongiaceae", "Enterobacteriaceae", "Ethanoligenenaceae", "Fibrobacteraceae", "Frankiaceae", "Gallionellaceae", "Geminicoccaceae", "Gemmatimonadaceae", "Geobacteraceae", "GZKB124", "Halieaceae", "Hydrogenedensaceae", "Hyphomicrobiaceae", "Hyphomonadaceae", "Isosphaeraceae", "JG30.KF.CM45", "Kaistiaceae", "Koribacteraceae", "Kryptoniaceae", "LD.RB.34", "Limnotrichaceae", "Marinilabiliaceae", "Mariprofundaceae", "Melioribacteraceae", "Methylophilaceae", "Micavibrionaceae", "Micromonosporaceae", "Moraxellaceae", "MSB.3C8", "MSBL8", "Nitrosomonadaceae", "Nocardioidaceae", "NS9.marine.group", "Oxalobacteraceae", "Phaselicystidaceae", "Phormidiaceae", "Pseudohongiellaceae", "Pseudomonadaceae", "Puniceicoccaceae", "Reyranellaceae", "Rhizobiaceae", "Rhodothermaceae", "Roseiflexaceae", "Rubinisphaeraceae", "Saprospiraceae", "SM23.30", "Solirubrobacteraceae", "Sphingomonadaceae", "Sulfuricellaceae", "Sumerlaeaceae", "Syntrophaceae", "Vicinamibacteraceae", "X211ds20", "Xanthomonadaceae", "Abditibacteriaceae", "Acholeplasmataceae", "AKYH767", "Bacillaceae", "Bdellovibrionaceae", "BIrii41", "Chlorobiaceae", "Chloroherpetonaceae", "Chthoniobacteraceae", "Chthonomonadaceae", "Clostridiaceae", "Competibacteraceae", "Demequinaceae", "Devosiaceae", "Dysgonomonadaceae", "env.OPS.17", "Ferrovibrionaceae", "Flavobacteriaceae", "Gemmataceae", "Haliangiaceae", "Holophagaceae", "Hydrogenophilaceae", "Ignavibacteriaceae", "Intrasporangiaceae", "Izemoplasmataceae", "KD3.93", "KI89A.clade", "Kiritimatiellaceae", "Legionellaceae", "Leptospiraceae", "Leptospirillaceae", "Marinifilaceae", "Methylococcaceae", "Mycobacteriaceae", "Myxococcaceae", "Nannocystaceae", "NS11.12.marine.group", "Obscuribacteraceae", "Oligoflexaceae", "Oxobacteraceae", "Paracaedibacteraceae", "Phycisphaeraceae", "Pirellulaceae", "Pseudanabaenaceae", "Pseudonocardiaceae", "Rhizobiales.Incertae.Sedis", "Rhodocyclaceae", "Rhodomicrobiaceae", "Rikenellaceae", "Rs.E47.termite.group", "Rubritaleaceae", "Sandaracinaceae", "SCGC.AAA011.D5", "Schlesneriaceae", "SM1B06", "SM2D12", "SR.FBR.L83", "ST.12K33", "Steroidobacteraceae", "Sulfurimonadaceae", "Sutterellaceae", "Syntrophobacteraceae", "Thioalkalispiraceae", "Thiotrichaceae", "TRA3.20", "Verrucomicrobiaceae")
+
+BtaxESV = data.frame(matrix(ncol=length(dataBinf),nrow=0))
+colnames(BtaxESV) = names(dataBinf)
+for (i in 1:length(Bfams)){
+df1 = subset(dataBinf, dataBinf$Family==Bfams[i])  
+BtaxESV = rbind(BtaxESV, df1)
+}
+BtaxESV = BtaxESV[order(BtaxESV$counter),]
+write.table(BtaxESV[,c(3,5:136)], file = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/anything related to bioinformatics, sequencing/picrust2 inputs/id-sample-x.txt", quote = FALSE, sep="\t", row.names=FALSE)
+write.csv(BtaxESV[,c(3,2)], file = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/anything related to bioinformatics, sequencing/picrust2 inputs/id-esv-x-toprocess.csv", quote = FALSE, row.names=FALSE)
+```
+
+## Analyses
+### Fungal analysis and plotting
+```{r ITS funguildr analysis}
+library(FUNGuildR)
+library(ggplot2)
+library(plotrix)
+library(tidyverse)
+library(patchwork)
+
+metadata1 = read.csv(file = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/plot metadata.csv", header=TRUE)
+
+funguildinput = read.csv(file="C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/funguildr input1.csv", header=TRUE)
+
+funguildout = funguild_assign(otu_table = funguildinput, tax_col="taxalist")
+
+out1 = funguildout %>% select(guild, VDTF001:VDTF166)
+
+FFun = data.frame(matrix(nrow = 132))
+guilds1 = c("Undefined Saprotroph", "Pathogen|Parasite", "Endophyte", "Wood Saprotroph", "Plant Saprotroph")
+for(i in 1:length(guilds1)){
+out5 = out1 %>% filter(str_detect(guild, guilds1[i]))
+out5 = data.frame(t(out5))[-1,]
+out5 = data.frame(apply(out5, 2, as.numeric))
+out6 = Sum=rowSums(out5)
+FFun = cbind(FFun, out6)}
+
+FFun = FFun[,-1] %>% mutate(across(everything(), ~(. / sum(., na.rm = TRUE)) * 100))
+FFun = cbind(Regime.Time = metadata1$Regime.Time, FFun)
+FFun = cbind(Regime = metadata1$Regime, FFun)
+names(FFun) = c("Regime", "Regime.Time", "Undefined Saprotroph", "Pathogen / Parasite", "Endophyte", "Wood Saprotroph", "Plant Saprotroph")
+################################################################################
+out1 = FFun %>% pivot_longer(cols = -c(Regime, Regime.Time), names_to = "Variable", values_to = "Value") %>%
+  group_by(Regime, Variable) %>%
+  summarize(
+    Mean = mean(Value),
+    CI_Lower = max(t.test(Value, conf.level = 0.95)$conf.int[1],-0.1),
+    CI_Upper = t.test(Value, conf.level = 0.95)$conf.int[2]  )
+out2 = FFun %>% pivot_longer(cols = -c(Regime, Regime.Time), names_to = "Variable", values_to = "Value") %>%
+  group_by(Regime.Time, Variable) %>% summarize(    Mean = mean(Value), CI_Lower = max(t.test(Value)$conf.int[1],-0.1),    CI_Upper = t.test(Value)$conf.int[2])
+
+p1 = ggplot(out1, aes(x = Variable, y = Mean, fill = Regime)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.85) +
+  geom_errorbar(aes(ymin = CI_Lower, ymax = CI_Upper), position = position_dodge(width = 0.9), width = 0.4) +
+  labs(tag = "A", x = " ", y = "", fill = "Regime") + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        panel.border = element_rect(colour = "black", fill=NA, linewidth=1),
+        legend.box.background=element_rect(),
+        legend.box.margin=margin(1,1,1,1),
+        axis.text.x = element_blank(),
+        text = element_text(size = 15))
+
+
+p2 = ggplot(out2, aes(x = Variable, y = Mean, fill = Regime.Time)) + geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.8) + geom_errorbar(aes(ymin = CI_Lower, ymax = CI_Upper), position = position_dodge(width = 0.9), width = 0.4) + scale_fill_manual(values = c("#F8766D", "#CC6666", "#993333", "#00BA38", "#339966", "#006633", "#619CFF", "#3366FF", "#0033CC")) + labs(tag = "B", x = "Functional Category", y = "Mean Relative Abundance", fill = "Regime*Time") + scale_x_discrete(guide = guide_axis(n.dodge=3)) +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        panel.border = element_rect(colour = "black", fill=NA, linewidth=1),
+        legend.box.background=element_rect(),
+        legend.box.margin=margin(1,1,1,1),
+        text = element_text(size = 15))
+
+(p1 / p2)
+ggsave(filename = f.ffun, path = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/Statistical outputs and figures/All figures dumped", device = "tiff", width = 14, height = 7)
+```
+
+### Bacterial analysis
+```{r picrust, code to use in linux environment, eval=FALSE}
+# Only two files of interest:   id-esv-x-toprocess.csv     and  id-sample-x.txt
+
+# First convert       id-esv-x-toprocess.csv    into    id-esv.txt          with this shape;  do some ctrl+H reshaping in notepad++, no header:
+# >id3
+# TACGTA
+# >id5
+# TACGGTC
+# change file format of   id-esv.txt   to    id-esv.fna 
+
+#  shave off > sign in    id-sample-x.txt and has format:
+# seq.ids	VDTB1
+# id1  0
+# id2  35
+
+conda activate picrust2
+cd picrust2-testing/
+ls
+
+
+
+# spin up picrust and feed in:    id-esv3.fna     id-sample-x.txt
+picrust2_pipeline.py -s id-esv.fna -i id-sample-x.txt -o picrust2_out --min_align 0.8 --stratified -p 8
+#be sure to grab the    pred_metagenome_unstrat.tsv.gz   file from the KO folder, e.g. KO_METAGENOME_OUT;  DO NOT USE EC_METAGENOME_OUT files.
+```
+
+```{r ggpicrust2 processing}
+library(readr)
+devtools::install_github('cafferychen777/ggpicrust2', force=TRUE)
+library(ggpicrust2)
+library(tibble)
+library(tidyverse)
+library(ggprism)
+library(patchwork)
+library(stringr)
+library(ggplot2)
+library(plotrix)
+
+metadata1 =  read_csv("C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/ggpicrust metadata.csv", trim_ws = TRUE)
+metadata2 = metadata1[,c(1,2,7)]
+
+filepathpicrust = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/R scripts inputs/pred_metagenome_unstrat.tsv"  #be sure to grab the    pred_metagenome_unstrat.tsv.gz   file from the KO folder, e.g. KO_METAGENOME_OUT;  DO NOT USE EC_METAGENOME_OUT files.
+
+group = "Regime.Time"
+Group = metadata2$Regime.Time
+
+# Convert KO kegg abundances to KEGG pathway abundance.  Very very slow.
+kegg_abundance = ko2kegg_abundance(filepathpicrust)
+
+# Conduct statistical tests for comparisons
+daa_results_df =  pathway_daa(
+    abundance = kegg_abundance,
+    metadata = metadata2,
+    group = "Regime.Time",
+    daa_method = "ALDEx2",
+    select = NULL,
+    reference = NULL)
+
+# extract results of ALDEx2
+daa_sub_method_results_df =  daa_results_df[daa_results_df$method == "ALDEx2_Kruskal-Wallace test", ]
+#View(daa_sub_method_results_df)
+
+part1in = daa_sub_method_results_df[1:100,]
+part2in = daa_sub_method_results_df[101:200,]
+part3in = daa_sub_method_results_df[201:dim(daa_sub_method_results_df)[1],]
+
+# add annotation to KO pathway, turn into KEGG pathway
+part1out =  pathway_annotation(pathway = "KO", daa_results_df = part1in, ko_to_kegg = TRUE)
+part2out =  pathway_annotation(pathway = "KO", daa_results_df = part2in, ko_to_kegg = TRUE)
+part3out =  pathway_annotation(pathway = "KO", daa_results_df = part3in, ko_to_kegg = TRUE)
+
+daa_annotated_sub_method_results_df = rbind(part1out, part2out, part3out)
+rm(part1in, part1out, part2in, part2out, part3in, part3out)
+View(daa_annotated_sub_method_results_df)
+
+# generate visualization, but must select certain pathways to plot, otherwise is too many lol
+## check out the daa_annotated_sub_method_results_df object to see the pathways of interest
+
+#list of interest:
+selection1 = c("ko00190", "ko00195", "ko00680", "ko00710", "ko00720", "ko00910", "ko00920")
+
+kegg_abundance$feature = row.names(kegg_abundance)
+df0 = merge(daa_annotated_sub_method_results_df, kegg_abundance, by.x = "feature", by.y = "feature")
+df0 = subset(df0, feature %in% selection1)
+df0 = df0[,c(1, 15, 19:150)]
+
+BFun = data.frame(matrix(nrow = 132))
+for(i in 1:length(selection1)){
+out5 = df0 %>% filter(str_detect(feature, selection1[i]))
+out6 = data.frame(t(out5))[-c(1,2),]
+out6 = as.numeric(out6)
+out6 = out6/sum(out6)*100
+BFun = cbind(BFun, out6)}
+BFun = BFun[,-1]
+names(BFun) = df0$pathway_name
+BFun = cbind(Regime.Time = metadata1$Regime.Time, BFun)
+BFun = cbind(Regime = metadata1$Regime, BFun)
+BFun
+
+out1 = BFun %>% pivot_longer(cols = -c(Regime, Regime.Time), names_to = "Variable", values_to = "Value") %>%
+  group_by(Regime, Variable) %>%
+  summarize(
+    Mean = mean(Value),
+    CI_Lower = t.test(Value)$conf.int[1],
+    CI_Upper = t.test(Value)$conf.int[2]  )
+out2 = BFun %>% pivot_longer(cols = -c(Regime, Regime.Time), names_to = "Variable", values_to = "Value") %>%
+  group_by(Regime.Time, Variable) %>% summarize(    Mean = mean(Value), CI_Lower = t.test(Value)$conf.int[1],    CI_Upper = t.test(Value)$conf.int[2])
+
+p1 = ggplot(out1, aes(x = Variable, y = Mean, fill = Regime)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.85) +
+  geom_errorbar(aes(ymin = CI_Lower, ymax = CI_Upper), position = position_dodge(width = 0.9), width = 0.4) +
+  labs(tag = "A", x = " ", y = "", fill = "Regime") + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        panel.border = element_rect(colour = "black", fill=NA, linewidth=1),
+        legend.box.background=element_rect(),
+        legend.box.margin=margin(1,1,1,1),
+        axis.text.x = element_blank(),
+        text = element_text(size = 15))
+
+p2 = ggplot(out2, aes(x = Variable, y = Mean, fill = Regime.Time)) + geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.8) + geom_errorbar(aes(ymin = CI_Lower, ymax = CI_Upper), position = position_dodge(width = 0.9), width = 0.4) + scale_fill_manual(values = c("#F8766D", "#CC6666", "#993333", "#00BA38", "#339966", "#006633", "#619CFF", "#3366FF", "#0033CC")) + labs(tag = "B", x = "Functional Category", y = "Mean Relative Abundance", fill = "Regime*Time") + scale_x_discrete(guide = guide_axis(n.dodge=3)) +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        panel.border = element_rect(colour = "black", fill=NA, linewidth=1),
+        legend.box.background=element_rect(),
+        legend.box.margin=margin(1,1,1,1),
+        text = element_text(size = 15))
+
+(p1 / p2)
+ggsave(filename = f.bfun, path = "C:/Users/daov9/OneDrive - Louisiana State University/Research/BBMNWR/2021-2024 project/Statistical outputs and figures/All figures dumped", device = "tiff", width = 14, height = 7)
+```
+
+```{r picrust2 plotting odd pathways}
+selection1 = c("ko05142", "ko05200", "ko03050", "ko04916")
+kegg_abundance$feature = row.names(kegg_abundance)
+df0 = merge(daa_annotated_sub_method_results_df, kegg_abundance, by.x = "feature", by.y = "feature")
+df0 = subset(df0, feature %in% selection1)
+df0 = df0[,c(1, 15, 19:150)]
+
+BFun = data.frame(matrix(nrow = 132))
+for(i in 1:length(selection1)){
+out5 = df0 %>% filter(str_detect(feature, selection1[i]))
+out6 = data.frame(t(out5))[-c(1,2),]
+out6 = as.numeric(out6)
+out6 = out6/sum(out6)*100
+BFun = cbind(BFun, out6)}
+BFun = BFun[,-1]
+names(BFun) = df0$pathway_name
+BFun = cbind(Regime.Time = metadata1$Regime.Time, BFun)
+BFun = cbind(Regime = metadata1$Regime, BFun)
+BFun
+
+out1 = BFun %>% pivot_longer(cols = -c(Regime, Regime.Time), names_to = "Variable", values_to = "Value") %>%
+  group_by(Regime, Variable) %>%
+  summarize(
+    Mean = mean(Value),
+    CI_Lower = t.test(Value)$conf.int[1],
+    CI_Upper = t.test(Value)$conf.int[2]  )
+out2 = BFun %>% pivot_longer(cols = -c(Regime, Regime.Time), names_to = "Variable", values_to = "Value") %>%
+  group_by(Regime.Time, Variable) %>% summarize(    Mean = mean(Value), CI_Lower = t.test(Value)$conf.int[1],    CI_Upper = t.test(Value)$conf.int[2])
+
+p1 = ggplot(out1, aes(x = Variable, y = Mean, fill = Regime)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.85) +
+  geom_errorbar(aes(ymin = CI_Lower, ymax = CI_Upper), position = position_dodge(width = 0.9), width = 0.4) +
+  labs(tag = "A", x = " ", y = "", fill = "Regime") + theme_minimal() + theme(axis.text.x = element_blank())
+
+
+p2 = ggplot(out2, aes(x = Variable, y = Mean, fill = Regime.Time)) + geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.8) + geom_errorbar(aes(ymin = CI_Lower, ymax = CI_Upper), position = position_dodge(width = 0.9), width = 0.4) + scale_fill_manual(values = c("#F8766D", "#CC6666", "#993333", "#00BA38", "#339966", "#006633", "#619CFF", "#3366FF", "#0033CC")) + labs(tag = "B", x = "Functional Category", y = "Mean Relative Abundance", fill = "Regime*Time") + theme_minimal() + scale_x_discrete(guide = guide_axis(n.dodge=3))
+
+(p1 / p2)
+```
+
+```{r clean up}
+rm(list=ls())
+```
